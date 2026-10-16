@@ -8,14 +8,20 @@ Read the relevant section before changing sync logic; key ones:
 [sync algorithm](spec/06-sync-algorithm.md), [safety guards](spec/09-safety-guards.md),
 [edge cases](spec/13-edge-cases.md), [legacy client state](spec/03-legacy-state.md).
 
-Current phase: CLI prototype — scope, defaults and open gaps in [§19](spec/19-prototype-readiness.md). Start there.
+Current phase: CLI prototype done; next is the real cloud runbook in [§19.9](spec/19-prototype-readiness.md)
+(scope, findings and open gaps are in the same file). Start there.
 
 ## Layout
 
-- `src/WebDavSync.Core/` — engine: scanners, WebDAV client, planner, executor, state DB. No UI references.
-- `src/WebDavSync.App/` — WinForms tray app (`net10.0-windows`).
-- `src/WebDavSync.Cli/` — headless tool: `probe`, `import`, `scan`, `plan`, `sync --once [--dry-run]`.
-- `tests/` — unit tests (planner, hash, names, importer) and integration tests (local WebDAV server).
+- `src/WebDavSync.Core/` — engine, no UI references: `Model/` (keys, hash, entries, snapshots), `Local/`
+  (scanner, FileId, trash), `Remote/` (WebDAV client, crawler, probe), `Planning/` (pure planner, guards,
+  approval), `Execution/` (executor), `State/` (SQLite state DB), `Legacy/` (`.cloud.db` importer),
+  `Engine/` (cycle orchestration, pair setup), `Config/` (settings, markers, filters).
+- `src/WebDavSync.App/` — WinForms tray app (`net10.0-windows`); not created yet.
+- `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list`, `import`, `scan`, `plan`, `sync --once`, `status`.
+- `tests/WebDavSync.Core.Tests/` — unit tests (planner decision table, moves, folders, guards, hash, names, importer,
+  executor scenarios on temp folders + in-memory remote). `tests/WebDavSync.IntegrationTests/` — against
+  `rclone serve webdav` in Docker (skipped without Docker).
 
 ## Storage
 
@@ -27,9 +33,15 @@ Current phase: CLI prototype — scope, defaults and open gaps in [§19](spec/19
 
 ```
 dotnet build
-dotnet test
-dotnet run --project src/WebDavSync.Cli -- plan --dry-run
+dotnet test                                              # xUnit v3 on Microsoft.Testing.Platform
+dotnet test --project tests/WebDavSync.Core.Tests
+dotnet run --project src/WebDavSync.Cli -- plan <pair>   # password in env WDS_PASSWORD
+dotnet run --project src/WebDavSync.Cli -- sync <pair> --once --dry-run
+.\scripts\smoke-real.ps1 -Url <webdav url> -User <login>  # disposable test pair only, see §19.9
 ```
+
+`--data-dir` / `WDS_DATA_DIR` override `<app dir>\data\`. In Git Bash set `MSYS_NO_PATHCONV=1`, otherwise
+arguments like `/webdavsync-test` are rewritten into Windows paths.
 
 ## Safety invariants (never break these)
 
@@ -50,7 +62,8 @@ dotnet run --project src/WebDavSync.Cli -- plan --dry-run
 
 - `.cloud.db` is SQLite: two trees (local `l_root_id`, remote `r_root_id`) in `FOLDERS_RECORDS` /
   `FILES_RECORDS`, linked by `CLOSURE_TABLE` (parent → direct child, `child_is_folder` picks the table).
-  `key` is lower-cased `name`; `inode` is the NTFS file id; `time` is Unix seconds; `hash` is the content hash.
+  `key` is lower-cased `name`; `inode` is the NTFS file id (64-bit file index incl. sequence, as returned by
+  `GetFileInformationByHandle`); `time` is Unix seconds; `hash` is the content hash.
 - Content hash: `size < 21` → bytes zero-padded to 20, uppercase hex; else `SHA1("mrCloud" + content + decimal size)`.
 - Details: [§3](spec/03-legacy-state.md).
 

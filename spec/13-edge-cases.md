@@ -1,5 +1,8 @@
 # 13. Edge cases (must be handled and covered by tests)
 
+Test names start with `EdgeN_` for the case they cover (e.g. `Edge24_Incomplete_remote_listing_…`).
+Open items of the prototype: [§19.8](19-prototype-readiness.md).
+
 Names and paths:
 
 1. Case-only renames; two remote names differing only in case (if the remote is case-sensitive) → rename one locally with ` (case conflict)`.

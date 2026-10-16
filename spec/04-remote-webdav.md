@@ -3,35 +3,47 @@
 ## 4.1 `IRemoteStore`
 
 ```
-ListAsync(path, depth)            -> entries (name, isDir, size, mtime, etag?, hash?, contentType?)
-GetAsync(path, range?)            -> stream
+ListAsync(path)                   -> self + direct children (name, isDir, size, mtime, etag?, hash?, contentType?), complete?
+StatAsync(path)                   -> item or null (Depth: 0)
+GetAsync(path, offset)            -> stream (+ etag, length)
 PutAsync(path, stream, length, mtime?)
 MkdirAsync(path)
 MoveAsync(from, to, overwrite=false)
 DeleteAsync(path)
 GetQuotaAsync()                   -> used/available (RFC 4331) if supported
-ProbeAsync()                      -> RemoteCapabilities
 ```
+
+The probe (§4.2) is a separate component on top of the raw client (it needs PROPPATCH, `allprop`, `Depth: infinity`).
+Paths are absolute remote paths; each segment is percent-encoded (`%`, `#`, `+`, spaces, non-ASCII, §13 #6) and
+hrefs are decoded relative to the endpoint path. Basic auth is sent preemptively. Metadata requests have a
+100 s timeout; all requests go through the `MaxRequestsPerSecond` limiter (monotonic clock).
 
 ## 4.2 Capability probe (run on pair setup and from CLI `probe`)
 
-Detect and persist in state:
+Detect and persist (`wds probe` saves `data\probe-<host>-<time>.json`; machine-readable keys in brackets):
 
-- Auth OK (Basic auth with an **app password** issued by the provider for WebDAV).
-- `PROPFIND Depth: 1` works; whether `Depth: infinity` is allowed.
-- Which properties are returned: `getetag`, `getlastmodified`, `getcontentlength`,
-  quota props, any hash-like custom property.
-- Whether a folder's `getetag`/`getlastmodified` changes when a descendant changes
-  (enables incremental remote crawl).
-- Whether mtime can be set (`PROPPATCH` `Win32LastModifiedTime` / `getlastmodified`) and is preserved by `PUT`.
-- `MOVE` of a folder is server-side and atomic.
+- Auth OK (Basic auth with an **app password** issued by the provider for WebDAV) [`AuthOk`].
+- `PROPFIND Depth: 1` works [`Depth1`]; whether `Depth: infinity` is allowed [`DepthInfinity`].
+- Which properties are returned [`RootProperties`, `FileProperties`]: `getetag` [`FileETag`], `getlastmodified`,
+  `getcontentlength`, quota props [`QuotaUsedBytes`, `QuotaAvailableBytes`], a property whose value equals our
+  content hash of the probe file [`HashProperty`].
+- Whether a folder's `getetag`/`getlastmodified` changes when a child / a grandchild changes
+  [`FolderChangesOnChild`, `FolderChangesOnDescendant`] (enables incremental remote crawl).
+- Whether mtime is taken from `PUT` with `X-OC-Mtime` [`MtimeViaOcHeader`] or can be set with `PROPPATCH`
+  `Win32LastModifiedTime` [`MtimeViaProppatchWin32`] / `getlastmodified` [`MtimeViaProppatchDav`].
+- `MOVE` of a file keeps etag / mtime [`MoveKeepsETag`, `MoveKeepsMtime`]; `MOVE` of a folder is server-side
+  with its content [`MoveFolder`]; `DELETE` works [`Delete`].
 - `DELETE` goes to the cloud trash (verify via web UI manually; record as a setting).
-- Case sensitivity: create `Probe.txt`, `PROPFIND probe.txt`.
-- Maximum upload size, behavior on quota exceeded (expect `507`).
-- Rate-limit behavior (`429`, `503`, `Retry-After`).
+- Case sensitivity: create `Probe.txt`, `PROPFIND probe.txt` [`CaseInsensitive`].
+- Maximum upload size, behavior on quota exceeded (expect `507`), rate limits (`429`, `503`, `Retry-After`):
+  not probed automatically (reported as "not tested").
 
-All probe actions happen inside a dedicated remote folder `/.webdavsync-probe-<random>` that
+All probe actions happen inside a dedicated remote folder `<root>/.webdavsync-probe-<random>` that
 is removed afterwards.
+
+Reference result, `rclone serve webdav` (local backend, used by the integration tests): no quota, no hash
+property, `X-OC-Mtime` honored, PROPPATCH mtime ignored, case-sensitive, `Depth: infinity` allowed, folder mtime
+changes on a child change but not on a grandchild change, MOVE keeps etag and mtime.
 
 ## 4.3 Remote change detection
 
@@ -42,9 +54,16 @@ WebDAV has no change feed. Strategy, in order of preference (chosen by probe):
 2. **Full crawl**: `Depth: 1` breadth-first over all folders, throttled by the request limiter.
    ~900 folders → ~900 requests; at the default 5 req/s that is ~3 minutes, so the full crawl
    is not the "fast path" — it runs on a longer interval (default 15 min) and on demand.
+   (Prototype: always a full crawl.)
 3. Targeted re-list of folders touched by our own operations or by the last local changes.
 
-Remote identity of a file version: `etag` if present, otherwise `(size, mtime)`.
+Remote identity of a file version: `etag` if present on both the item and the base, otherwise `(size, mtime)`.
+Exceptions: items inside a subtree moved on the server count as unchanged when size and mtime match (servers may
+assign new etags on MOVE, §6.3); after our own folder `MOVE` the executor re-crawls the moved folder and adopts
+new etags of files whose size and mtime are unchanged.
+
+Remote names invalid on Windows (§13 #2) and names that differ from another item only in case (on a
+case-sensitive server, §13 #1) are not synced and reported; they pin their parent folder (§6.2).
 
 ## 4.4 Provider profiles
 
@@ -55,3 +74,28 @@ The engine itself is provider-neutral.
 |---|---|---|
 | Mail.ru Cloud (primary) | `https://webdav.cloud.mail.ru/` | App password for WebDAV; content hash = [§3.3](03-legacy-state.md); limits per probe ([§18](18-open-questions.md)). |
 | Generic WebDAV | user-defined | Defaults only; everything else from the probe. |
+
+## 4.5 HTTP error taxonomy and retry policy
+
+| Class | Statuses / conditions | Handling |
+|---|---|---|
+| Transient | 408, 423, 429, 5xx except 507, request timeout, malformed XML | Metadata requests (PROPFIND, GET, MKCOL): up to 4 attempts in the client. Ops: up to 3 attempts in the executor. Backoff `4^(n-1)` s with ±20 % jitter, capped at 5 min; `Retry-After` wins. Then the op fails for this cycle. |
+| Permanent | other 4xx (incl. 403) | No retry; op fails, goes to the error list. |
+| Auth | 401 | No retry; the cycle stops; the pair needs a new password (§13 #25). |
+| Quota | 507 | No retry; uploads stop for the rest of the cycle, downloads continue (§13 #26). |
+| Offline | no HTTP response (DNS, refused, reset), or a non-XML answer to PROPFIND (captive portal) | The cycle stops; a crawl never turns it into deletions (§13 #23). |
+| NotFound | 404, 410 | `Stat` → "absent"; listing of a subfolder → its parent's listing becomes incomplete (§6.8). |
+| Conflict | 405 (MKCOL on an existing item), 409 (missing parent), 412 (MOVE target exists) | Caller re-checks the actual state (e.g. MKCOL 405 is fine if a folder exists). |
+
+`PUT` and `MOVE` are not retried by the client (a stream cannot be replayed; a MOVE may have succeeded);
+the executor retries the whole op after re-checking its preconditions. Adaptive rate halving on 429/503 (§11)
+is not in the prototype.
+
+## 4.6 Remote mtime handling
+
+- `PUT` sends `X-OC-Mtime: <local mtime, Unix seconds>`. Servers that honor it (ownCloud/Nextcloud, rclone)
+  keep the local mtime; others set the upload time. Either is fine: the base stores the local and the remote
+  mtime separately, so change detection never compares mtimes across sides (§9 #8).
+- Remote identity stored in base: `etag`, `size`, `mtime` as returned by PROPFIND after the operation.
+- Downloaded files get the remote `getlastmodified` as their mtime (setting `SetLocalMtimeFromRemote`, default on);
+  the base stores the actual local mtime after the move into place.

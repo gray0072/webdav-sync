@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WebDavSync.Core/WebDavSync.Core.csproj" />
+    <Project Path="src/WebDavSync.Cli/WebDavSync.Cli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WebDavSync.Core.Tests/WebDavSync.Core.Tests.csproj" />
+    <Project Path="tests/WebDavSync.IntegrationTests/WebDavSync.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

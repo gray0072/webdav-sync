@@ -6,6 +6,10 @@ Tests:
   move detection, content hash vectors, name validation, `.cloud.db` importer on a fixture DB.
 - Integration: local WebDAV server (in-process test server or `rclone serve webdav` in CI) +
   temp folders; fault injection (drop connections, 429/503/507, slow server, partial listings).
+  Implemented: `tests/WebDavSync.IntegrationTests` starts `rclone/rclone serve webdav` in Docker on a random
+  local port (skipped when Docker is not running); fault injection so far only in unit tests (fake HTTP handler,
+  in-memory remote with listing faults).
+- Runner: xUnit v3 on Microsoft.Testing.Platform — `dotnet test` (all), `dotnet test --project <test project>`.
 - Soak: random operation generator on both sides, then assert L == R and no data lost.
 
 Rollout on the real data:

@@ -53,16 +53,24 @@ data\
 - Corrupted `state.db` (integrity check fails on open) → stop, offer restore from `backup\`
   or reset to union-mode initial sync.
 
-## 15.3 State DB (sketch)
+## 15.3 State DB
 
 ```
-items(key PK, path, is_dir, local_file_id, local_size, local_mtime, local_hash,
-      remote_etag, remote_size, remote_mtime, remote_hash, synced_at)
+items(key PK, is_dir, local_path, remote_path, local_file_id, local_size, local_mtime, local_hash,
+      remote_etag, remote_size, remote_mtime, remote_hash, remote_confirmed, synced_at)
 journal(op_id PK, cycle_id, type, path, path2, status, attempts, error, created_at, updated_at)
 conflicts(id PK, key, local_copy, remote_copy, detected_at, resolved_at)
 held(key PK, reason, held_at)
-meta(key PK, value)   -- schema version, pair id, capabilities, initial_sync_done, legacy_import info
+meta(key PK, value)
 ```
+
+- Times are UTC ticks; `local_file_id` is the 64-bit file index stored as a signed integer.
+- `local_path` / `remote_path`: real names per side (case and Unicode normalization may differ, §6.9).
+- `remote_confirmed = 0` for entries imported from `.cloud.db` until the first crawl adopts them ([§3.5](03-legacy-state.md)).
+- Journal status: `Running`, `Done`, `Failed`, `Skipped`, `Interrupted` ([§6.7](06-sync-algorithm.md)).
+- `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `legacy_import`
+  (import stats, JSON), `last_cycle` (summary, JSON), `capabilities` (reserved for probe results).
+- `held` is created but not used by the prototype.
 
 ## 15.4 Legacy files
 
@@ -70,3 +78,39 @@ meta(key PK, value)   -- schema version, pair id, capabilities, initial_sync_don
 
 Open question: should we additionally maintain a `.cloud.db`-compatible writer (to keep the
 legacy files meaningful)? Default answer for v1: no; the legacy file is imported once and left untouched.
+
+## 15.5 `settings.json` schema
+
+Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Implemented settings of a pair:
+
+| Name | Type | Default | Meaning |
+|---|---|---|---|
+| `id` | string | new GUID | Pair id; must match both `pair.json` markers. |
+| `name` | string | — | Short name used by the CLI. |
+| `localRoot` | path | — | Local root folder. |
+| `remoteUrl` | URL | — | WebDAV endpoint ([§4.4](04-remote-webdav.md)). |
+| `remoteRoot` | string | `/` | Remote root folder under the endpoint. |
+| `user` | string | — | Login; the password is in `secrets.dat` (prototype: env `WDS_PASSWORD`). |
+| `mode` | `DryRun` \| `ApproveAll` \| `Guarded` \| `Auto` | `ApproveAll` | [§10](10-modes-approval.md). |
+| `maxOpsPerCycle` | int? | unlimited | Action ops per cycle ([§10](10-modes-approval.md)). |
+| `conflictWinner` | `Local` \| `Remote` \| `Newer` | `Local` | [§6.4](06-sync-algorithm.md). |
+| `massDeleteCount` | int | 50 | [§9](09-safety-guards.md) #2–3. |
+| `massDeletePercent` | double | 5 | [§9](09-safety-guards.md) #2–3, % of tracked items. |
+| `maxCompareDownloadBytes` | long | 64 MB | [§6.2](06-sync-algorithm.md) `Compare`. |
+| `minFreeDiskSpace` | long | 2 GB | [§9](09-safety-guards.md) #7. |
+| `keepOverwrittenVersions` | bool | true | Old local version to the Recycle Bin before an overwrite. |
+| `localDeleteTarget` | `RecycleBin` \| `StateTrash` | `RecycleBin` | [§9](09-safety-guards.md) #5; `StateTrash` = `.webdavsync\trash\<date>\`. |
+| `importedBaseMatch` | `SizeOnly` \| `SizeAndMtime` | `SizeOnly` | [§3.5](03-legacy-state.md). |
+| `maxRequestsPerSecond` | double | 5 | [§11](11-bandwidth-pause.md); 0 = unlimited. |
+| `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
+| `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)). |
+| `excludePatterns` | string[] | `[]` | Globs (`*`, `?`); without `/` matched against the name, otherwise against the path ([§12.3](12-filters.md)). |
+
+Settings of later milestones (not implemented yet; names reserved): timing ([§8](08-timing.md): `localQuietPeriod`,
+`maxBatchDelay`, `fileStableFor`, `remotePollInterval`, `remoteFullCrawlInterval`, `localFullRescanInterval`,
+`idleBackoff`), bandwidth and concurrency ([§11](11-bandwidth-pause.md): `uploadLimitKBps`, `downloadLimitKBps`,
+`maxParallelTransfers`, `maxParallelRequests`, schedule), selective sync policy ([§12.2](12-filters.md):
+`syncRootFiles`, `newRemoteRootFolders`), `maxFileSize` ([§12.3](12-filters.md)).
+
+The data folder can be overridden with `--data-dir` or the environment variable `WDS_DATA_DIR` (used by tests
+and for running several setups side by side).
