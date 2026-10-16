@@ -8,8 +8,9 @@ Read the relevant section before changing sync logic; key ones:
 [sync algorithm](spec/06-sync-algorithm.md), [safety guards](spec/09-safety-guards.md),
 [edge cases](spec/13-edge-cases.md), [legacy client state](spec/03-legacy-state.md).
 
-Current phase: CLI prototype done; next is the real cloud runbook in [§19.9](spec/19-prototype-readiness.md)
-(scope, findings and open gaps are in the same file). Start there.
+Current phase: CLI prototype done and verified on a disposable Mail.ru test pair; next is step 6 of the real
+cloud runbook in [§19.9](spec/19-prototype-readiness.md) (dry run on `D:\Cloud`, only with the user's go-ahead;
+scope, findings and open gaps are in the same file). Start there.
 
 ## Layout
 

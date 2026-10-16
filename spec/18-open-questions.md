@@ -11,4 +11,15 @@
 7. Meaning of `.cloud_ss`.
 
 `wds probe` answers 2–4 automatically (and whether MOVE keeps etag/mtime); reference answers for
-`rclone serve webdav` are in [§4.2](04-remote-webdav.md). Mail.ru answers are pending ([§19.3](19-prototype-readiness.md)).
+`rclone serve webdav` and Mail.ru are in [§4.2](04-remote-webdav.md).
+
+Mail.ru answers (test account, 2026-10-16):
+
+1. WebDAV works on the test account with an app password (quota 8 GB). File-size and rate limits: not tested.
+2. Yes: `getetag` is the content hash of [§3.3](03-legacy-state.md) (`remoteHashProperty = {DAV:}getetag`).
+3. No: folders have no etag / `getlastmodified` → full crawl only.
+4. Not on `PUT` (`X-OC-Mtime` ignored); `PROPPATCH` of `Win32LastModifiedTime` or `getlastmodified` sets it.
+   Not needed: the base stores both mtimes ([§4.6](04-remote-webdav.md)).
+5. Pending: the user checks the cloud trash in the web UI.
+6. Moot while the remote hash is known: hash comparison takes precedence over `importedBaseMatch`
+   ([§3.5](03-legacy-state.md)); `SizeOnly` stays the default for servers without a hash.

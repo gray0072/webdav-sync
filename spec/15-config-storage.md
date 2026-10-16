@@ -101,6 +101,7 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 | `keepOverwrittenVersions` | bool | true | Old local version to the Recycle Bin before an overwrite. |
 | `localDeleteTarget` | `RecycleBin` \| `StateTrash` | `RecycleBin` | [§9](09-safety-guards.md) #5; `StateTrash` = `.webdavsync\trash\<date>\`. |
 | `importedBaseMatch` | `SizeOnly` \| `SizeAndMtime` | `SizeOnly` | [§3.5](03-legacy-state.md). |
+| `remoteHashProperty` | string? (Clark notation) | from the newest probe report | PROPFIND property holding the content hash ([§4.2](04-remote-webdav.md)); Mail.ru: `{DAV:}getetag`; absent = unknown. CLI: `pair add --remote-hash-property <name\|auto\|none>`. |
 | `maxRequestsPerSecond` | double | 5 | [§11](11-bandwidth-pause.md); 0 = unlimited. |
 | `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
 | `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)). |

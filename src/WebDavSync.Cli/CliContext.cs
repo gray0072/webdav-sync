@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Extensions.Logging;
@@ -49,7 +51,7 @@ internal sealed class CliContext : IDisposable
             ? password
             : throw new CliException($"Set the WebDAV app password in the {PasswordVariable} environment variable.");
 
-    public WebDavClient CreateClient(string url, string user, double maxRequestsPerSecond = 5) =>
+    public WebDavClient CreateClient(string url, string user, double maxRequestsPerSecond = 5, string? hashProperty = null) =>
         new(
             new WebDavOptions
             {
@@ -57,8 +59,31 @@ internal sealed class CliContext : IDisposable
                 User = user,
                 Password = RequirePassword(),
                 MaxRequestsPerSecond = maxRequestsPerSecond,
+                HashProperty = hashProperty is null ? null : XName.Get(hashProperty),
             },
             _factory.CreateLogger("webdav"));
+
+    public WebDavClient CreateClient(PairSettings pair) =>
+        CreateClient(pair.RemoteUrl, pair.User, pair.MaxRequestsPerSecond, pair.RemoteHashProperty);
+
+    /// <summary>The content hash property from the newest stored probe report for the endpoint's host, if any.</summary>
+    public string? FindProbedHashProperty(string url)
+    {
+        var latest = Directory.EnumerateFiles(Paths.DataDir, $"probe-{new Uri(url).Host}-*.json")
+            .OrderByDescending(f => f, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (latest is null)
+        {
+            return null;
+        }
+
+        using var json = JsonDocument.Parse(File.ReadAllText(latest));
+        return json.RootElement.TryGetProperty("Capabilities", out var caps) &&
+               caps.TryGetProperty("HashProperty", out var hash) &&
+               hash.ValueKind == JsonValueKind.String
+            ? hash.GetString()
+            : null;
+    }
 
     public void Dispose()
     {

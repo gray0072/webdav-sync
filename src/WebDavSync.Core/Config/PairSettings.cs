@@ -68,6 +68,12 @@ public sealed class PairSettings
 
     public ImportedBaseMatch ImportedBaseMatch { get; set; } = ImportedBaseMatch.SizeOnly;
 
+    /// <summary>
+    /// PROPFIND property that carries the content hash (§3.3) in Clark notation, e.g. <c>{DAV:}getetag</c> on Mail.ru
+    /// (§4.4); found by the probe. <c>null</c>: the remote hash is unknown.
+    /// </summary>
+    public string? RemoteHashProperty { get; set; }
+
     public double MaxRequestsPerSecond { get; set; } = 5;
 
     public bool SetLocalMtimeFromRemote { get; set; } = true;

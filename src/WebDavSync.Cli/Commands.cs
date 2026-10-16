@@ -1,5 +1,7 @@
 using System.CommandLine;
 using System.Globalization;
+using System.Xml;
+using System.Xml.Linq;
 using WebDavSync.Core.Config;
 using WebDavSync.Core.Engine;
 using WebDavSync.Core.Legacy;
@@ -48,7 +50,12 @@ internal static class Commands
         var mode = new Option<SyncMode>("--mode") { Description = "Operating mode (§10).", DefaultValueFactory = _ => SyncMode.ApproveAll };
         var importLegacy = new Option<bool>("--import-legacy") { Description = "Import <local>\\.cloud.db as the baseline (§3.4)." };
         var reset = new Option<bool>("--reset-state") { Description = "Take over a folder that belongs to another pair (§13 #39)." };
-        var add = new Command("add", "Create a sync pair.") { name, local, url, remoteRoot, user, mode, importLegacy, reset };
+        var hashProperty = new Option<string>("--remote-hash-property")
+        {
+            Description = "PROPFIND property with the content hash, e.g. {DAV:}getetag; 'auto' = from the newest probe report for the endpoint, 'none' = unknown.",
+            DefaultValueFactory = _ => "auto",
+        };
+        var add = new Command("add", "Create a sync pair.") { name, local, url, remoteRoot, user, mode, importLegacy, reset, hashProperty };
         add.SetAction((parse, _) => Run(parse.GetValue(dataDir), "pair add", ctx =>
         {
             var pairName = parse.GetValue(name)!;
@@ -71,6 +78,12 @@ internal static class Commands
                 RemoteRoot = parse.GetValue(remoteRoot)!,
                 User = parse.GetValue(user)!,
                 Mode = parse.GetValue(mode),
+                RemoteHashProperty = parse.GetValue(hashProperty) switch
+                {
+                    "auto" => ctx.FindProbedHashProperty(parse.GetValue(url)!),
+                    "none" => null,
+                    var explicitName => ParseHashProperty(explicitName!),
+                },
             };
             PairSetup.InitializeLocal(pair, parse.GetValue(reset));
             if (parse.GetValue(importLegacy))
@@ -81,6 +94,7 @@ internal static class Commands
             ctx.Settings.Pairs.Add(pair);
             ctx.SaveSettings();
             Console.WriteLine($"Pair '{pair.Name}' ({pair.Id}) created: {pair.LocalRoot} <-> {pair.RemoteUrl.TrimEnd('/')}{pair.RemoteRootNormalized}, mode {pair.Mode}.");
+            Console.WriteLine($"Remote content hash: {pair.RemoteHashProperty ?? "unknown (same-size files are downloaded to compare)"}");
             Console.WriteLine($"Settings: {ctx.Paths.SettingsFile}");
             return Task.FromResult(0);
         }));
@@ -102,6 +116,18 @@ internal static class Commands
         }));
 
         return new Command("pair", "Manage sync pairs.") { add, list };
+    }
+
+    private static string ParseHashProperty(string name)
+    {
+        try
+        {
+            return XName.Get(name).ToString();
+        }
+        catch (Exception ex) when (ex is ArgumentException or XmlException)
+        {
+            throw new CliException($"--remote-hash-property: '{name}' is not a property name in Clark notation, e.g. {{DAV:}}getetag.");
+        }
     }
 
     public static Command Import(Option<string?> dataDir)
@@ -224,7 +250,7 @@ internal static class Commands
         command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "plan", async ctx =>
         {
             var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
-            using var client = ctx.CreateClient(pair.RemoteUrl, pair.User, pair.MaxRequestsPerSecond);
+            using var client = ctx.CreateClient(pair);
             using var engine = SyncEngine.Open(pair, client, ctx.Logger);
             var progress = new ConsoleProgress();
             var cycle = await engine.PlanAsync(progress, ct);
@@ -250,7 +276,7 @@ internal static class Commands
         {
             var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
             var effectiveMode = parse.GetValue(dryRun) ? SyncMode.DryRun : parse.GetValue(mode) ?? pair.Mode;
-            using var client = ctx.CreateClient(pair.RemoteUrl, pair.User, pair.MaxRequestsPerSecond);
+            using var client = ctx.CreateClient(pair);
             using var engine = SyncEngine.Open(pair, client, ctx.Logger);
             var progress = new ConsoleProgress();
             var cycle = await engine.PlanAsync(progress, ct);

@@ -78,7 +78,8 @@ Setting `ImportedBaseMatch`:
   it is an upload over the remote version).
 - `SizeAndMtime`: also requires `getlastmodified` to equal the legacy remote `time` (to the second); otherwise
   the entry counts as remotely modified (download, under the mass-overwrite guard).
-- If the server exposes the content hash, it is compared instead of both.
+- If the server exposes the content hash (setting `remoteHashProperty`; Mail.ru: `{DAV:}getetag`, [§4.4](04-remote-webdav.md)),
+  it is compared with the imported hash instead of both, and the setting has no effect.
 
 Offline check on the real folder (local scan + imported base + the legacy remote tree as a stand-in for an
 unchanged remote): 44 541 `UpdateBase`, 3 `Upload`, 14 `DeleteRemote` covering 232 items (184 files, 48 folders)

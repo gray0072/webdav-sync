@@ -171,6 +171,22 @@ public sealed class PlannerDecisionTableTests
     }
 
     [Fact]
+    public void Imported_base_with_remote_hash_detects_same_size_change()
+    {
+        // Mail.ru: getetag is the content hash (§4.4), so the imported base is matched exactly, mtime ignored.
+        var world = new World().Local("a.txt", "one", id: 1).Base("a.txt", "one", 1, confirmed: false);
+        PlanAssert.Only(world.Remote("a.txt", "two", World.T0, withHash: true).Plan(), (OpType.Download, "a.txt"));
+    }
+
+    [Fact]
+    public void Imported_base_with_remote_hash_is_adopted_despite_mtime_change()
+    {
+        var settings = World.Settings() with { ImportedBaseMatch = ImportedBaseMatch.SizeAndMtime };
+        var world = new World().Local("a.txt", "one", id: 1).Base("a.txt", "one", 1, confirmed: false);
+        PlanAssert.Only(world.Remote("a.txt", "one", World.T1, withHash: true).Plan(settings), (OpType.UpdateBase, "a.txt"));
+    }
+
+    [Fact]
     public void Imported_base_with_different_remote_size_downloads()
     {
         var plan = new World().Local("a.txt", "one", id: 1).Base("a.txt", "one", 1, confirmed: false).Remote("a.txt", "longer", World.T1).Plan();

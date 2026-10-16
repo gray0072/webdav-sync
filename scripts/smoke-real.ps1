@@ -59,11 +59,21 @@ function Get-DavUri([string]$path) {
 }
 
 function Invoke-Dav([string]$method, [string]$path, $body = $null, [hashtable]$headers = @{}) {
-    $request = New-Object System.Net.Http.HttpRequestMessage ((New-Object System.Net.Http.HttpMethod $method), (Get-DavUri $path))
-    if ($null -ne $body) { $request.Content = New-Object System.Net.Http.StringContent ($body, [Text.Encoding]::UTF8) }
-    foreach ($key in $headers.Keys) { [void]$request.Headers.TryAddWithoutValidation($key, $headers[$key]) }
-    $response = $http.SendAsync($request).GetAwaiter().GetResult()
-    [pscustomobject]@{ Status = [int]$response.StatusCode; Body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() }
+    # Transient statuses are retried like in the client (spec 4.5): Mail.ru returns an occasional 504.
+    for ($attempt = 1; ; $attempt++) {
+        $request = New-Object System.Net.Http.HttpRequestMessage ((New-Object System.Net.Http.HttpMethod $method), (Get-DavUri $path))
+        if ($null -ne $body) { $request.Content = New-Object System.Net.Http.StringContent ($body, [Text.Encoding]::UTF8) }
+        foreach ($key in $headers.Keys) { [void]$request.Headers.TryAddWithoutValidation($key, $headers[$key]) }
+        $response = $http.SendAsync($request).GetAwaiter().GetResult()
+        $status = [int]$response.StatusCode
+        # Bytes + explicit UTF-8: .NET Framework rejects Mail.ru's quoted charset ("utf-8") in ReadAsStringAsync.
+        $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+        $transient = $status -in 408, 423, 429 -or ($status -ge 500 -and $status -ne 507)
+        if (-not $transient -or $attempt -ge 4) { break }
+        Write-Host "    $method $path -> $status, retry $attempt" -ForegroundColor Yellow
+        Start-Sleep -Seconds ([math]::Pow(4, $attempt - 1))
+    }
+    [pscustomobject]@{ Status = $status; Body = [Text.Encoding]::UTF8.GetString($bytes) }
 }
 
 # Names of the direct children of a remote folder, or $null if it does not exist.

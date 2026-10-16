@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text;
+using System.Net.Http.Headers;
+using System.Xml.Linq;
 using Microsoft.Extensions.Logging.Abstractions;
+using WebDavSync.Core.Model;
 using WebDavSync.Core.Remote;
 
 namespace WebDavSync.Core.Tests;
@@ -41,6 +44,69 @@ public sealed class WebDavClientTests
         Assert.Equal("abc", file.ETag);
         Assert.Equal(new DateTime(2026, 1, 13, 10, 0, 0, DateTimeKind.Utc), file.MtimeUtc);
         Assert.Equal("Sub", Assert.Single(listing.Children, c => c.IsDir).Name);
+    }
+
+    /// <summary>Mail.ru response as recorded on 2026-10-16 (§4.4).</summary>
+    private const string MailRuListing = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <d:multistatus xmlns:d="DAV:">
+        	<d:response>
+        		<d:href>/Sub%20Folder</d:href>
+        		<d:propstat>
+        			<d:status>HTTP/1.1 200 OK</d:status>
+        			<d:prop>
+        					<d:displayname>Sub Folder</d:displayname>
+        					<d:resourcetype><d:collection/></d:resourcetype>
+        			</d:prop>
+        		</d:propstat>
+        	</d:response>
+        	<d:response>
+        		<d:href>/Sub%20Folder/%D0%9E%D1%82%D1%87%D1%91%D1%82%20%231%20%2B%2050%25%20%26%20co.txt</d:href>
+        		<d:propstat>
+        			<d:status>HTTP/1.1 200 OK</d:status>
+        			<d:prop>
+        					<d:displayname>Отчёт #1 + 50% &amp; co.txt</d:displayname>
+        					<d:getcontentlength>6</d:getcontentlength>
+        					<d:getcontenttype>text/plain</d:getcontenttype>
+        					<d:getetag>6E65737465640000000000000000000000000000</d:getetag>
+        					<d:getlastmodified>Fri, 16 Oct 2026 17:53:09 GMT</d:getlastmodified>
+        					<d:resourcetype/>
+        			</d:prop>
+        		</d:propstat>
+        	</d:response>
+        </d:multistatus>
+        """;
+
+    [Fact]
+    public async Task MailRu_etag_is_the_content_hash()
+    {
+        using var client = Client(
+            _ =>
+            {
+                var response = Xml(MailRuListing);
+                response.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/xml; charset=\"utf-8\"");
+                return response;
+            },
+            XName.Get("{DAV:}getetag"),
+            "https://webdav.cloud.mail.ru/");
+        var listing = await client.ListAsync("/Sub Folder", CancellationToken.None);
+
+        Assert.True(listing.Complete);
+        Assert.True(listing.Self.IsDir);
+        Assert.Null(listing.Self.ETag);
+        var file = Assert.Single(listing.Children);
+        Assert.Equal("Отчёт #1 + 50% & co.txt", file.Name);
+        Assert.Equal(6, file.Size);
+        Assert.Equal(ContentHash.Compute("nested"u8), file.Hash);
+        Assert.Equal(new DateTime(2026, 10, 16, 17, 53, 9, DateTimeKind.Utc), file.MtimeUtc);
+    }
+
+    [Fact]
+    public async Task Without_hash_property_the_remote_hash_is_unknown()
+    {
+        using var client = Client(_ => Xml(MailRuListing), endpoint: "https://webdav.cloud.mail.ru/");
+        var listing = await client.ListAsync("/Sub Folder", CancellationToken.None);
+        Assert.Null(Assert.Single(listing.Children).Hash);
     }
 
     [Fact]
@@ -108,6 +174,7 @@ public sealed class WebDavClientTests
     [Theory]
     [InlineData(HttpStatusCode.InsufficientStorage, RemoteErrorKind.Quota)]
     [InlineData(HttpStatusCode.ServiceUnavailable, RemoteErrorKind.Transient)]
+    [InlineData(HttpStatusCode.GatewayTimeout, RemoteErrorKind.Transient)]
     [InlineData(HttpStatusCode.Locked, RemoteErrorKind.Transient)]
     [InlineData(HttpStatusCode.Forbidden, RemoteErrorKind.Permanent)]
     [InlineData(HttpStatusCode.PreconditionFailed, RemoteErrorKind.Conflict)]
@@ -117,9 +184,9 @@ public sealed class WebDavClientTests
     private static HttpResponseMessage Xml(string body) =>
         new(HttpStatusCode.MultiStatus) { Content = new StringContent(body, Encoding.UTF8, "application/xml") };
 
-    private static WebDavClient Client(Func<HttpRequestMessage, HttpResponseMessage> respond) =>
+    private static WebDavClient Client(Func<HttpRequestMessage, HttpResponseMessage> respond, XName? hashProperty = null, string endpoint = "https://host/dav/") =>
         new(
-            new WebDavOptions { Endpoint = new Uri("https://host/dav/"), User = "u", Password = "p", MaxRequestsPerSecond = 0 },
+            new WebDavOptions { Endpoint = new Uri(endpoint), User = "u", Password = "p", MaxRequestsPerSecond = 0, HashProperty = hashProperty },
             NullLogger.Instance,
             new FakeHandler(respond));
 

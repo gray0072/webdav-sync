@@ -45,6 +45,14 @@ Reference result, `rclone serve webdav` (local backend, used by the integration 
 property, `X-OC-Mtime` honored, PROPPATCH mtime ignored, case-sensitive, `Depth: infinity` allowed, folder mtime
 changes on a child change but not on a grandchild change, MOVE keeps etag and mtime.
 
+Reference result, Mail.ru (`https://webdav.cloud.mail.ru/`, test account, 2026-10-16): Basic auth with an app
+password works; quota props present; file props `displayname`, `getcontentlength`, `getcontenttype`, `getetag`,
+`getlastmodified`, `resourcetype`; **`getetag` is the content hash of [§3.3](03-legacy-state.md)** (40 uppercase hex,
+unquoted) → `HashProperty = {DAV:}getetag`; `X-OC-Mtime` ignored (upload time is kept), PROPPATCH
+`Win32LastModifiedTime` and `getlastmodified` both set the mtime; case-insensitive; `Depth: infinity` → `400`;
+folders have neither etag nor `getlastmodified`, so no incremental crawl; MOVE keeps etag and mtime; MOVE of a
+folder and DELETE work.
+
 ## 4.3 Remote change detection
 
 WebDAV has no change feed. Strategy, in order of preference (chosen by probe):
@@ -70,9 +78,16 @@ case-sensitive server, §13 #1) are not synced and reported; they pin their pare
 A profile holds provider-specific defaults (endpoint, auth hint, known limits, probe results).
 The engine itself is provider-neutral.
 
+Mail.ru quirks seen so far (all handled):
+
+- `Content-Type: application/xml; charset="utf-8"` — the charset is quoted; .NET Framework (Windows PowerShell 5.1)
+  refuses to read such a body as a string, the client reads streams and is not affected.
+- Hrefs are absolute paths without a trailing slash for folders; folders carry only `displayname` and `resourcetype`.
+- Occasional `504 Gateway Timeout` on a small `PUT`; a retry succeeds (Transient, §4.5).
+
 | Profile | Endpoint | Notes |
 |---|---|---|
-| Mail.ru Cloud (primary) | `https://webdav.cloud.mail.ru/` | App password for WebDAV; content hash = [§3.3](03-legacy-state.md); limits per probe ([§18](18-open-questions.md)). |
+| Mail.ru Cloud (primary) | `https://webdav.cloud.mail.ru/` | App password for WebDAV; `getetag` = content hash ([§3.3](03-legacy-state.md)), `remoteHashProperty = {DAV:}getetag`; full crawl only; limits per probe ([§18](18-open-questions.md)). |
 | Generic WebDAV | user-defined | Defaults only; everything else from the probe. |
 
 ## 4.5 HTTP error taxonomy and retry policy
@@ -94,7 +109,7 @@ is not in the prototype.
 ## 4.6 Remote mtime handling
 
 - `PUT` sends `X-OC-Mtime: <local mtime, Unix seconds>`. Servers that honor it (ownCloud/Nextcloud, rclone)
-  keep the local mtime; others set the upload time. Either is fine: the base stores the local and the remote
+  keep the local mtime; others (Mail.ru) set the upload time. Either is fine: the base stores the local and the remote
   mtime separately, so change detection never compares mtimes across sides (§9 #8).
 - Remote identity stored in base: `etag`, `size`, `mtime` as returned by PROPFIND after the operation.
 - Downloaded files get the remote `getlastmodified` as their mtime (setting `SetLocalMtimeFromRemote`, default on);

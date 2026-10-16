@@ -1,7 +1,8 @@
 # 19. Prototype readiness
 
-Status as of 2026-10-16: **CLI prototype implemented** (milestones 1–3 minimal). Next step: the user items of
-§19.3, then the real cloud runbook **§19.9**.
+Status as of 2026-10-16: **CLI prototype implemented** (milestones 1–3 minimal) and **verified on the real
+Mail.ru cloud** with a disposable test pair (runbook §19.9 steps 1–5 done). Next step: §19.9 step 6 (dry run on
+`D:\Cloud`, after the user's go-ahead) and the cloud trash check (§18 #5).
 
 ## 19.1 Environment (checked)
 
@@ -18,7 +19,7 @@ no watcher, no scheduler.
 
 | Command | Done when | Status |
 |---|---|---|
-| `wds probe --url --user [--root]` | Prints a capability report ([§4.2](04-remote-webdav.md)) and stores it; answers [§18](18-open-questions.md) items 2–6 for Mail.ru. | Done; verified against rclone. Mail.ru: needs §19.3 #1. |
+| `wds probe --url --user [--root]` | Prints a capability report ([§4.2](04-remote-webdav.md)) and stores it; answers [§18](18-open-questions.md) items 2–6 for Mail.ru. | Done; verified against rclone and Mail.ru. |
 | `wds pair add` / `pair list` | Creates a pair: `settings.json` entry, local `pair.json`, `state.db`; optional `--import-legacy`. | Done. |
 | `wds import <root> [--pair]` | Reads `.cloud.db` from a copy, prints tree stats, both-trees agreement, ignored folders; with `--pair` writes the baseline. | Done; real `D:\Cloud`: 43 885 / 43 883 files, 893 folders, 44 776 base entries, 2 local-only. |
 | `wds scan <root> [--hash] [--sample N]` | Local snapshot with FileId/size/mtime and content hash; hashes match `.cloud.db` for unchanged files. | Done; real `D:\Cloud`: 43 698 unchanged, FileId == `inode` for all, 300/300 sampled hashes equal. |
@@ -30,13 +31,18 @@ Acceptance:
 
 - Scenarios A, B, C ([§7](07-scenarios.md)) pass against the in-memory remote (unit tests) and against
   `rclone serve webdav` in Docker (integration tests); the CLI flow probe → pair add → plan → sync was run
-  manually against rclone. The test pair `D:\CloudTest` ⇄ `/webdavsync-test` on the real cloud: pending §19.3.
+  manually against rclone. The test pair `D:\CloudTest` ⇄ `/webdavsync-test` on the real Mail.ru cloud (second,
+  disposable account): `scripts/smoke-real.ps1` — probe, C+E, A, B all PASS, with and without the remote hash
+  (runs in `D:\CloudTest\run2`, `run3`).
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 141 unit + 6 integration, all green (`dotnet test`).
+- Tests: 146 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
+
+Status: #1, #2, #4 done (test account `/webdavsync-test`, 2026-10-16); #3 pending; `importedBaseMatch` is moot on
+Mail.ru because the remote hash is known ([§3.5](03-legacy-state.md)).
 
 1. Create a WebDAV app password in the provider account; confirm WebDAV works on the current plan
    (e.g. one `PROPFIND` with curl). Without it only the local/Docker part can be built.
@@ -87,6 +93,9 @@ diagnostics export, `secrets.dat` (prototype reads the password from the environ
 - After a legacy import the remote marker does not exist yet although the initial sync counts as done; marker
   creation is tracked separately (`remote_marker_created`, [§9](09-safety-guards.md) #1).
 - The mass-delete percentage trips on small pairs ([§9](09-safety-guards.md) #2).
+- Mail.ru `getetag` equals the legacy content hash ([§3.3](03-legacy-state.md)): remote equality, imported base
+  matching and upload/download verification are exact; `Compare` downloads are not needed there
+  (`remoteHashProperty`, [§15.5](15-config-storage.md)). Other quirks: [§4.4](04-remote-webdav.md).
 
 ## 19.8 Known gaps in the prototype (next milestones)
 
@@ -100,10 +109,13 @@ diagnostics export, `secrets.dat` (prototype reads the password from the environ
 - Recycle Bin deletion (`SHFileOperation`) is not covered by automated tests (tests use `StateTrash`); it is
   exercised by `scripts/smoke-real.ps1` (verified against rclone: the file landed in the Recycle Bin).
 - Incremental crawl ([§4.3](04-remote-webdav.md)); the full crawl is used every cycle.
-- The remote hash property found by the probe cannot be configured yet (`WebDavOptions.HashProperty` exists,
-  no `remoteHashProperty` setting / CLI wiring).
 
-## 19.9 Next session: real cloud runbook
+## 19.9 Real cloud runbook
+
+Progress (2026-10-16, test account): steps 1–5 done — password as a user env var, probe recorded
+([§4.2](04-remote-webdav.md), [§18](18-open-questions.md)), smoke test PASS, `remoteHashProperty` wired, Mail.ru
+quirks covered by `WebDavClientTests`. Open: §18 #5 (trash) and step 6. Note: the test account is not the one of
+`D:\Cloud`; step 6 needs that account's login and app password.
 
 The user provides the WebDAV app password and creates two **empty** folders: local `D:\CloudTest` and remote
 `/webdavsync-test`. Commands below assume the repo root and `wds` = `dotnet run --project src/WebDavSync.Cli --`
