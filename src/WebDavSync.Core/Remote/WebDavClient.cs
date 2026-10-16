@@ -193,7 +193,30 @@ public sealed class WebDavClient : IRemoteStore, IDisposable
 
     public async Task PutAsync(string path, Stream content, long length, IEnumerable<(string Name, string Value)>? headers, CancellationToken ct)
     {
-        using var response = await SendAsync(
+        var counting = new CountingStream(content);
+        HttpResponseMessage response;
+        try
+        {
+            response = await SendPutAsync(path, counting, length, headers, ct).ConfigureAwait(false);
+        }
+        catch (RemoteException ex) when (ex.Kind == RemoteErrorKind.Offline && counting.BytesRead > 0)
+        {
+            // The server accepted the connection and part of the body: a drop mid-transfer is worth retrying the op
+            // (§4.5); if the network is really gone, the retry fails to connect and stays Offline.
+            throw new RemoteException(
+                RemoteErrorKind.Transient,
+                $"{ex.Message} (connection lost after {counting.BytesRead.ToString(CultureInfo.InvariantCulture)} of {length.ToString(CultureInfo.InvariantCulture)} bytes)",
+                inner: ex);
+        }
+
+        using (response)
+        {
+            await EnsureSuccessAsync(response, path, ct).ConfigureAwait(false);
+        }
+    }
+
+    private Task<HttpResponseMessage> SendPutAsync(string path, Stream content, long length, IEnumerable<(string Name, string Value)>? headers, CancellationToken ct) =>
+        SendAsync(
             () =>
             {
                 var body = new StreamContent(content, 81920);
@@ -210,9 +233,7 @@ public sealed class WebDavClient : IRemoteStore, IDisposable
             retry: false,
             timeout: null,
             HttpCompletionOption.ResponseContentRead,
-            ct).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, path, ct).ConfigureAwait(false);
-    }
+            ct);
 
     public async Task MkdirAsync(string path, CancellationToken ct)
     {
@@ -349,6 +370,18 @@ public sealed class WebDavClient : IRemoteStore, IDisposable
             GetRetryAfter(response));
     }
 
+    /// <summary>The message plus the innermost cause, e.g. "Error while copying content to a stream. (connection reset by peer)".</summary>
+    private static string Describe(Exception ex)
+    {
+        var root = ex;
+        while (root.InnerException is not null)
+        {
+            root = root.InnerException;
+        }
+
+        return ReferenceEquals(root, ex) ? ex.Message : $"{ex.Message} ({root.Message.TrimEnd('.')})";
+    }
+
     private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
     {
         var retryAfter = response.Headers.RetryAfter;
@@ -397,7 +430,7 @@ public sealed class WebDavClient : IRemoteStore, IDisposable
             catch (HttpRequestException ex)
             {
                 response?.Dispose();
-                failure = new RemoteException(RemoteErrorKind.Offline, $"{request.Method} {request.RequestUri} failed: {ex.Message}", inner: ex);
+                failure = new RemoteException(RemoteErrorKind.Offline, $"{request.Method} {request.RequestUri} failed: {Describe(ex)}", inner: ex);
             }
             catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
             {
@@ -414,6 +447,52 @@ public sealed class WebDavClient : IRemoteStore, IDisposable
             _logger.LogWarning("{Message}; retry {Attempt}/{Attempts} in {Delay}", failure.Message, attempt + 1, attempts, delay);
             await Task.Delay(delay, ct).ConfigureAwait(false);
         }
+    }
+}
+
+/// <summary>Read-only pass-through that counts the bytes handed to <see cref="HttpClient"/> (PUT bodies).</summary>
+internal sealed class CountingStream(Stream inner) : Stream
+{
+    public long BytesRead { get; private set; }
+
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => inner.Length;
+
+    public override long Position
+    {
+        get => BytesRead;
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) => Count(inner.Read(buffer, offset, count));
+
+    public override int Read(Span<byte> buffer) => Count(inner.Read(buffer));
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+        Count(await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false));
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+    public override void Flush()
+    {
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    private int Count(int read)
+    {
+        BytesRead += read;
+        return read;
     }
 }
 

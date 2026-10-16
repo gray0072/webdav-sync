@@ -119,6 +119,11 @@ quirks covered by `WebDavClientTests`. §18 #5: deletes go to the cloud trash. S
 data dir `%LOCALAPPDATA%\wds-cloud`); result in [§3.5](03-legacy-state.md). Next: the user decides on the 227 remote
 deletes, the 2 conflicts and the download, then `ApproveAll` with `maxOpsPerCycle = 20`.
 
+First real cycle on `D:\Cloud` (2026-10-16, run by the user; deletes confirmed, the 3 changed files kept local
+via `--keep-local`): 44 546 base updates and 2 uploads done, initial sync marked done; the 643 MB upload failed
+mid-body ([§4.4](04-remote-webdav.md)) and, as Offline, aborted the cycle before the deletes (they are last, §6.5).
+Next: re-run the cycle (upload retried as Transient, then the 9 deletes).
+
 The user provides the WebDAV app password and creates two **empty** folders: local `D:\CloudTest` and remote
 `/webdavsync-test`. Commands below assume the repo root and `wds` = `dotnet run --project src/WebDavSync.Cli --`
 (or the Release build `src\WebDavSync.Cli\bin\Release\net10.0\wds.dll`).

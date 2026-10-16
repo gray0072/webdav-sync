@@ -165,6 +165,34 @@ public sealed class WebDavClientTests
     }
 
     [Fact]
+    public async Task Put_dropped_mid_body_is_transient()
+    {
+        // Mail.ru, 2026-10-16: a 643 MB PUT failed with "Error while copying content to a stream" after ~3 minutes.
+        using var client = Client(request =>
+        {
+            var body = request.Content!.ReadAsStream();
+            body.ReadExactly(new byte[1000]);
+            throw new HttpRequestException("Error while copying content to a stream.", new IOException("Connection reset by peer."));
+        });
+        var ex = await Assert.ThrowsAsync<RemoteException>(() =>
+            client.PutAsync("/big.bin", new MemoryStream(new byte[5000]), 5000, (DateTime?)null, CancellationToken.None));
+        Assert.Equal(RemoteErrorKind.Transient, ex.Kind);
+        Assert.False(ex.StopsCycle);
+        Assert.Contains("after 1000 of 5000 bytes", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Connection reset by peer", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Put_without_a_connection_is_offline()
+    {
+        using var client = Client(_ => throw new HttpRequestException("No such host is known."));
+        var ex = await Assert.ThrowsAsync<RemoteException>(() =>
+            client.PutAsync("/big.bin", new MemoryStream(new byte[5000]), 5000, (DateTime?)null, CancellationToken.None));
+        Assert.Equal(RemoteErrorKind.Offline, ex.Kind);
+        Assert.True(ex.StopsCycle);
+    }
+
+    [Fact]
     public async Task Not_found_stat_returns_null()
     {
         using var client = Client(_ => new HttpResponseMessage(HttpStatusCode.NotFound));

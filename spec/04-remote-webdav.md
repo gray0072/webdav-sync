@@ -84,6 +84,9 @@ Mail.ru quirks seen so far (all handled):
   refuses to read such a body as a string, the client reads streams and is not affected.
 - Hrefs are absolute paths without a trailing slash for folders; folders carry only `displayname` and `resourcetype`.
 - Occasional `504 Gateway Timeout` on a small `PUT`; a retry succeeds (Transient, §4.5).
+- A 643 MB `PUT` (main account) failed after ~176 s with "Error while copying content to a stream" (connection
+  dropped mid-body); it used to be Offline and stopped the cycle, now it is Transient and the op is retried. Root
+  cause (server limit vs network) not known yet; error messages now include the innermost cause and the bytes sent.
 
 | Profile | Endpoint | Notes |
 |---|---|---|
@@ -94,11 +97,11 @@ Mail.ru quirks seen so far (all handled):
 
 | Class | Statuses / conditions | Handling |
 |---|---|---|
-| Transient | 408, 423, 429, 5xx except 507, request timeout, malformed XML | Metadata requests (PROPFIND, GET, MKCOL): up to 4 attempts in the client. Ops: up to 3 attempts in the executor. Backoff `4^(n-1)` s with ±20 % jitter, capped at 5 min; `Retry-After` wins. Then the op fails for this cycle. |
+| Transient | 408, 423, 429, 5xx except 507, request timeout, malformed XML, connection lost after part of a `PUT` body was sent | Metadata requests (PROPFIND, GET, MKCOL): up to 4 attempts in the client. Ops: up to 3 attempts in the executor. Backoff `4^(n-1)` s with ±20 % jitter, capped at 5 min; `Retry-After` wins. Then the op fails for this cycle. |
 | Permanent | other 4xx (incl. 403) | No retry; op fails, goes to the error list. |
 | Auth | 401 | No retry; the cycle stops; the pair needs a new password (§13 #25). |
 | Quota | 507 | No retry; uploads stop for the rest of the cycle, downloads continue (§13 #26). |
-| Offline | no HTTP response (DNS, refused, reset), or a non-XML answer to PROPFIND (captive portal) | The cycle stops; a crawl never turns it into deletions (§13 #23). |
+| Offline | no HTTP response (DNS, refused, reset before any body byte was sent), or a non-XML answer to PROPFIND (captive portal) | The cycle stops; a crawl never turns it into deletions (§13 #23). |
 | NotFound | 404, 410 | `Stat` → "absent"; listing of a subfolder → its parent's listing becomes incomplete (§6.8). |
 | Conflict | 405 (MKCOL on an existing item), 409 (missing parent), 412 (MOVE target exists) | Caller re-checks the actual state (e.g. MKCOL 405 is fine if a folder exists). |
 
