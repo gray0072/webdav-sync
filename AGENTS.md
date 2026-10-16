@@ -8,6 +8,8 @@ Read the relevant section before changing sync logic; key ones:
 [sync algorithm](spec/06-sync-algorithm.md), [safety guards](spec/09-safety-guards.md),
 [edge cases](spec/13-edge-cases.md), [legacy client state](spec/03-legacy-state.md).
 
+Current phase: CLI prototype — scope, defaults and open gaps in [§19](spec/19-prototype-readiness.md). Start there.
+
 ## Layout
 
 - `src/WebDavSync.Core/` — engine: scanners, WebDAV client, planner, executor, state DB. No UI references.

@@ -24,5 +24,6 @@ Primary sync pair: local `D:\Cloud` ⇄ WebDAV cloud (provider profile: [§4](04
 16. [Testing and rollout](16-testing-rollout.md)
 17. [Milestones](17-milestones.md)
 18. [Open questions (resolve with `wds probe` / manual checks)](18-open-questions.md)
+19. [Prototype readiness](19-prototype-readiness.md) — scope, defaults, what is still missing
 
 Section numbers (§N.M) match file numbers: §6.2 is section 2 of `06-*.md`.
