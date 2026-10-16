@@ -304,10 +304,27 @@ public sealed class EngineScenarioTests : IDisposable
         await AssertUpToDateAsync();
     }
 
-    private async Task<(CyclePlan Cycle, ExecutionResult Result)> SyncAsync()
+    [Fact]
+    public async Task Keep_local_overwrites_a_broken_remote_version()
+    {
+        _local.File("db.kdbx", "good v1");
+        await SyncAsync();
+        _local.File("db.kdbx", "good v2, edited locally");
+        _remote.AddFile("/test/db.kdbx", "broken by another tool");
+
+        var (cycle, result) = await SyncAsync(new Dictionary<string, Side> { ["db.kdbx"] = Side.Local });
+
+        PlanAssert.Only(cycle.Plan, (OpType.Upload, "db.kdbx"));
+        Assert.True(result.AllDone);
+        Assert.Equal("good v2, edited locally", _remote.Files(Root)["db.kdbx"]);
+        AssertInSync();
+        await AssertUpToDateAsync();
+    }
+
+    private async Task<(CyclePlan Cycle, ExecutionResult Result)> SyncAsync(Dictionary<string, Side>? keepSide = null)
     {
         using var engine = SyncEngine.Open(_pair, _remote, NullLogger.Instance);
-        var cycle = await engine.PlanAsync(ct: TestContext.Current.CancellationToken);
+        var cycle = await engine.PlanAsync(keepSide ?? [], ct: TestContext.Current.CancellationToken);
         Assert.False(cycle.Guards.HasErrors, string.Join(" ", cycle.Guards.Errors));
         var result = await engine.ExecuteAsync(cycle, cycle.Plan.Ops, ct: TestContext.Current.CancellationToken);
         return (cycle, result);

@@ -154,6 +154,12 @@ public sealed record PlannerSettings
     public long MaxCompareDownloadBytes { get; init; } = 64L * 1024 * 1024;
 
     public SyncFilter Filter { get; init; } = SyncFilter.Empty;
+
+    /// <summary>
+    /// One-off user choice per file key (§6.4 "keep local / keep remote"): when the two versions differ, the kept side
+    /// overwrites the other one instead of a conflict, download or upload.
+    /// </summary>
+    public IReadOnlyDictionary<string, Side> KeepSide { get; init; } = new Dictionary<string, Side>();
 }
 
 public sealed record PlannerInput(

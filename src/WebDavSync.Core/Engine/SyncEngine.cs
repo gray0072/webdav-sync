@@ -113,7 +113,11 @@ public sealed class SyncEngine : IDisposable
         }
     }
 
-    public async Task<CyclePlan> PlanAsync(IProgress<string>? status = null, CancellationToken ct = default)
+    public Task<CyclePlan> PlanAsync(IProgress<string>? status = null, CancellationToken ct = default) =>
+        PlanAsync(new Dictionary<string, Side>(), status, ct);
+
+    /// <param name="keepSide">One-off "keep local / keep remote" choices by key (§6.4), see <see cref="PlannerSettings.KeepSide"/>.</param>
+    public async Task<CyclePlan> PlanAsync(IReadOnlyDictionary<string, Side> keepSide, IProgress<string>? status = null, CancellationToken ct = default)
     {
         var cycleId = Guid.NewGuid().ToString("N")[..12];
         var notes = new List<string>();
@@ -206,6 +210,7 @@ public sealed class SyncEngine : IDisposable
             ImportedBaseMatch = Pair.ImportedBaseMatch,
             MaxCompareDownloadBytes = Pair.MaxCompareDownloadBytes,
             Filter = filter,
+            KeepSide = keepSide,
         }));
 
         RemoteQuota? quota = null;

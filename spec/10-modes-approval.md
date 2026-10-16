@@ -23,7 +23,8 @@ Additional debug controls:
 - "Approve and remember" rules: e.g. always auto-approve downloads into `Camera Uploads`.
 - Every executed op is listed in the Activity log with an "Open"/"Show in folder" action.
 - CLI: `wds plan <pair> [--full]` prints the plan; `wds sync <pair> --once [--dry-run] [--max-ops N]
-  [--mode M] [--yes] [--accept-guards] [--full]`. The console asks `[y]es / [s]afe ops only / [N]o` for ops that
+  [--mode M] [--yes] [--accept-guards] [--full]`; both take `--keep-local <path>` / `--keep-remote <path>`
+  ([§6.4](06-sync-algorithm.md)). The console asks `[y]es / [s]afe ops only / [N]o` for ops that
   need approval (`--yes` approves); a guard trip needs typing `yes` (or `--accept-guards`). Without an interactive
   console both default to "no". Exit codes: 0 done, 1 error, 2 partially done, 3 stopped by a guard, the user or
   root sanity.

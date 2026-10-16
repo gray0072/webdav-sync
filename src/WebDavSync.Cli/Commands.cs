@@ -118,6 +118,32 @@ internal static class Commands
         return new Command("pair", "Manage sync pairs.") { add, list };
     }
 
+    private static (Option<string[]> KeepLocal, Option<string[]> KeepRemote) KeepOptions() =>
+    (
+        new Option<string[]>("--keep-local") { Description = "File (relative path) whose local version overwrites the remote one if they differ; repeatable (§6.4)." },
+        new Option<string[]>("--keep-remote") { Description = "File (relative path) whose remote version overwrites the local one if they differ; repeatable (§6.4)." }
+    );
+
+    private static Dictionary<string, Side> KeepSide(ParseResult parse, Option<string[]> keepLocal, Option<string[]> keepRemote)
+    {
+        var result = new Dictionary<string, Side>(StringComparer.Ordinal);
+        foreach (var (option, side) in new[] { (keepLocal, Side.Local), (keepRemote, Side.Remote) })
+        {
+            foreach (var path in parse.GetValue(option) ?? [])
+            {
+                var key = PathKey.FromPath(path.Replace('\\', '/').Trim('/'));
+                if (result.TryGetValue(key, out var other) && other != side)
+                {
+                    throw new CliException($"'{path}' is given with both --keep-local and --keep-remote.");
+                }
+
+                result[key] = side;
+            }
+        }
+
+        return result;
+    }
+
     private static string ParseHashProperty(string name)
     {
         try
@@ -246,14 +272,15 @@ internal static class Commands
     {
         var pairArg = new Argument<string>("pair") { Description = "Pair name or id." };
         var full = new Option<bool>("--full") { Description = "List every op (default: first 25 per group)." };
-        var command = new Command("plan", "Print the three-way plan; nothing is executed.") { pairArg, full };
+        var (keepLocal, keepRemote) = KeepOptions();
+        var command = new Command("plan", "Print the three-way plan; nothing is executed.") { pairArg, full, keepLocal, keepRemote };
         command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "plan", async ctx =>
         {
             var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
             using var client = ctx.CreateClient(pair);
             using var engine = SyncEngine.Open(pair, client, ctx.Logger);
             var progress = new ConsoleProgress();
-            var cycle = await engine.PlanAsync(progress, ct);
+            var cycle = await engine.PlanAsync(KeepSide(parse, keepLocal, keepRemote), progress, ct);
             progress.Done();
             PlanPrinter.Print(cycle, parse.GetValue(full));
             return cycle.Guards.HasErrors ? 3 : 0;
@@ -271,7 +298,8 @@ internal static class Commands
         var yes = new Option<bool>("--yes", "-y") { Description = "Approve the plan without asking (guard trips still need --accept-guards)." };
         var acceptGuards = new Option<bool>("--accept-guards") { Description = "Accept mass-delete / mass-overwrite guard trips without asking." };
         var full = new Option<bool>("--full") { Description = "List every op." };
-        var command = new Command("sync", "Plan, approve and execute one cycle.") { pairArg, once, dryRun, maxOps, mode, yes, acceptGuards, full };
+        var (keepLocal, keepRemote) = KeepOptions();
+        var command = new Command("sync", "Plan, approve and execute one cycle.") { pairArg, once, dryRun, maxOps, mode, yes, acceptGuards, full, keepLocal, keepRemote };
         command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "sync", async ctx =>
         {
             var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
@@ -279,7 +307,7 @@ internal static class Commands
             using var client = ctx.CreateClient(pair);
             using var engine = SyncEngine.Open(pair, client, ctx.Logger);
             var progress = new ConsoleProgress();
-            var cycle = await engine.PlanAsync(progress, ct);
+            var cycle = await engine.PlanAsync(KeepSide(parse, keepLocal, keepRemote), progress, ct);
             progress.Done();
             PlanPrinter.Print(cycle, parse.GetValue(full));
 

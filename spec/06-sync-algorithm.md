@@ -103,6 +103,13 @@ side → rename on the other side via a temp name. A difference only in Unicode 
 - The conflict copy is synced like any other file (so both versions exist on both sides).
 - Every conflict is recorded in the state DB and shown in the Conflicts window until dismissed.
 - Conflicts window actions: open both, keep local, keep remote, keep both (dismiss).
+- One-off user choice per file, `PlannerSettings.KeepSide` (CLI: `plan`/`sync --keep-local <path>` /
+  `--keep-remote <path>`, repeatable): if a file exists on both sides and the versions are not known to be equal
+  (hash, else both unchanged vs base), the kept side overwrites the other one (`Upload`/`Download` with overwrite,
+  reason `keep local|remote (user choice)`) instead of a conflict, download or upload; no conflict copy. Any other
+  case (equal content, missing on a side, folder) → the choice is ignored with a plan warning. Not persisted: it
+  applies to the plan it is given to; the executor's stale checks still apply. Use case: a version broken by
+  another tool (§19.9).
 
 ## 6.5 Operation ordering
 
@@ -166,7 +173,7 @@ BaseEntry   (Key, IsDir, LocalPath, RemotePath, LocalFileId?, LocalSize, LocalMt
 Snapshot    (Entries by key, ListedFolders, SkippedKeys, Warnings)
 PlannerInput(LocalSnapshot, RemoteSnapshot, Base by key, PlannerSettings)
 PlannerSettings(UnionMode, ConflictWinner, Now, MachineName, TrustLocalFileIds, ImportedBaseMatch,
-                MaxCompareDownloadBytes, Filter)
+                MaxCompareDownloadBytes, Filter, KeepSide)
 SyncOp      (Type, Key, IsDir, Reason, LocalPath, RemotePath, NewKey, NewLocalPath, NewRemotePath,
              Local, Remote, Base  -- the states the planner saw, re-checked by the executor --
              Overwrite, Conflict kind, Loser side, Affected, Early)

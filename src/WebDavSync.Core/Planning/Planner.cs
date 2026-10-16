@@ -51,6 +51,8 @@ internal sealed class PlannerRun
     /// <summary>Keys moved by the remote side: the server may assign new etags on MOVE, so identity is (size, mtime).</summary>
     private readonly HashSet<string> _movedRemotely = new(StringComparer.Ordinal);
 
+    private readonly HashSet<string> _keepUsed = new(StringComparer.Ordinal);
+
     public PlannerRun(PlannerInput input)
     {
         _s = input.Settings;
@@ -71,6 +73,11 @@ internal sealed class PlannerRun
         DetectRemoteMoves();
         DetectCaseRenames();
         Decide();
+        foreach (var key in _s.KeepSide.Keys.Where(k => !_keepUsed.Contains(k)).Order(StringComparer.Ordinal))
+        {
+            _warnings.Add($"Keep {_s.KeepSide[key].ToString().ToLowerInvariant()} '{key}': not a file present on both sides with different content; ignored.");
+        }
+
         return new Plan(Order(), _warnings);
     }
 
@@ -550,6 +557,21 @@ internal sealed class PlannerRun
             return (l is not null, r is not null);
         }
 
+        if (l is not null && r is not null && _s.KeepSide.TryGetValue(key, out var keep) && !SameContent(l, r, b, lc, rc))
+        {
+            _keepUsed.Add(key);
+            if (keep == Side.Local)
+            {
+                Add(OpType.Upload, key, l, r, b, "keep local (user choice): overwrite remote", overwrite: true);
+            }
+            else
+            {
+                Add(OpType.Download, key, l, r, b, "keep remote (user choice): overwrite local", overwrite: true);
+            }
+
+            return (true, true);
+        }
+
         var union = _s.UnionMode || IgnoreBase(key);
         if (b is null)
         {
@@ -786,6 +808,12 @@ internal sealed class PlannerRun
             Overwrite = overwrite,
         });
     }
+
+    /// <summary>Both versions are known to be equal: by hash, otherwise both unchanged vs the base.</summary>
+    private static bool SameContent(LocalEntry l, RemoteEntry r, BaseEntry? b, Change lc, Change rc) =>
+        l.Hash is { } lh && r.Hash is { } rh
+            ? l.Size == r.Size && lh == rh
+            : b is not null && lc is Change.Unchanged or Change.Touched && rc is Change.Unchanged or Change.Touched;
 
     private static bool BaseNeedsRefresh(BaseEntry b, LocalEntry l, RemoteEntry r) =>
         !string.Equals(l.Path, b.LocalPath, StringComparison.Ordinal) ||
