@@ -1,8 +1,8 @@
 # 19. Prototype readiness
 
 Status as of 2026-10-16: **CLI prototype implemented** (milestones 1–3 minimal) and **verified on the real
-Mail.ru cloud** with a disposable test pair (runbook §19.9 steps 1–5 done). Next step: §19.9 step 6 (dry run on
-`D:\Cloud`, after the user's go-ahead) and the cloud trash check (§18 #5).
+Mail.ru cloud** with a disposable test pair (runbook §19.9 steps 1–5 done) and a dry run of `D:\Cloud` against
+the main account (step 6 done). Next step: the first real cycles on `D:\Cloud` after the user's decisions (§19.9).
 
 ## 19.1 Environment (checked)
 
@@ -114,8 +114,10 @@ diagnostics export, `secrets.dat` (prototype reads the password from the environ
 
 Progress (2026-10-16, test account): steps 1–5 done — password as a user env var, probe recorded
 ([§4.2](04-remote-webdav.md), [§18](18-open-questions.md)), smoke test PASS, `remoteHashProperty` wired, Mail.ru
-quirks covered by `WebDavClientTests`. Open: §18 #5 (trash) and step 6. Note: the test account is not the one of
-`D:\Cloud`; step 6 needs that account's login and app password.
+quirks covered by `WebDavClientTests`. §18 #5: deletes go to the cloud trash. Step 6 done on the main account
+(login in the user env var `WDS_LOGIN`, pair `cloud`, remote root `/` — the 8 top-level folders match exactly,
+data dir `%LOCALAPPDATA%\wds-cloud`); result in [§3.5](03-legacy-state.md). Next: the user decides on the 227 remote
+deletes, the 2 conflicts and the download, then `ApproveAll` with `maxOpsPerCycle = 20`.
 
 The user provides the WebDAV app password and creates two **empty** folders: local `D:\CloudTest` and remote
 `/webdavsync-test`. Commands below assume the repo root and `wds` = `dotnet run --project src/WebDavSync.Cli --`

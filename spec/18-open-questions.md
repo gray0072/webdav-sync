@@ -20,6 +20,7 @@ Mail.ru answers (test account, 2026-10-16):
 3. No: folders have no etag / `getlastmodified` → full crawl only.
 4. Not on `PUT` (`X-OC-Mtime` ignored); `PROPPATCH` of `Win32LastModifiedTime` or `getlastmodified` sets it.
    Not needed: the base stores both mtimes ([§4.6](04-remote-webdav.md)).
-5. Pending: the user checks the cloud trash in the web UI.
+5. Yes: deleted items land in the cloud trash; same names get suffixes there (`big.bin`, `big (1).bin`, `big (2).bin`).
 6. Moot while the remote hash is known: hash comparison takes precedence over `importedBaseMatch`
-   ([§3.5](03-legacy-state.md)); `SizeOnly` stays the default for servers without a hash.
+   ([§3.5](03-legacy-state.md)); `SizeOnly` stays the default for servers without a hash. Confirmed on the main
+   account: `getetag` equals the legacy `hash` for 43 697 files up to 2 GB.

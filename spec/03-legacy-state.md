@@ -83,4 +83,11 @@ Setting `ImportedBaseMatch`:
 
 Offline check on the real folder (local scan + imported base + the legacy remote tree as a stand-in for an
 unchanged remote): 44 541 `UpdateBase`, 3 `Upload`, 14 `DeleteRemote` covering 232 items (184 files, 48 folders)
-→ the mass-delete guard trips, as expected. Re-check with the real crawl once WebDAV access is available.
+→ the mass-delete guard trips, as expected.
+
+Real crawl (2026-10-16, dry run, `remoteHashProperty = {DAV:}getetag`, 426 s for 892 folders): 43 697 files equal by
+hash + 843 folders + 1 file present on both sides → `UpdateBase`; 9 `DeleteRemote` covering 227 items (deleted
+locally after the legacy client stopped; mass-delete guard trips); 5 `ForgetBase` (deleted on both sides);
+1 `Download` (same size, different hash: changed in the cloud on 2026-10-15); 2 `Conflict` (two small files edited on
+both sides since the last legacy sync on 2026-10-13). No other drift between the real remote and
+the legacy remote tree.
