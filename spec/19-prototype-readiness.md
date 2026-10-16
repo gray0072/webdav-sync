@@ -159,3 +159,22 @@ The user provides the WebDAV app password and creates two **empty** folders: loc
      `importedBaseMatch = SizeAndMtime` they would mean `getlastmodified` ≠ legacy `time` ([§18](18-open-questions.md) #6).
    - No `sync` on `D:\Cloud` without an explicit go-ahead; the next rollout step is `ApproveAll` with
      `maxOpsPerCycle = 20` ([§16](16-testing-rollout.md) #4).
+
+## 19.10 Status and next steps (2026-10-16)
+
+Done in the real cloud session:
+
+- Probe + smoke test on a disposable Mail.ru account: all scenarios PASS; Mail.ru answers recorded (§4.2, §4.4, §18).
+- `getetag` = content hash → `remoteHashProperty` setting (exact remote equality and imported base matching).
+- `--keep-local` / `--keep-remote` one-off choices (§6.4); type-ahead discarded before prompts (§10);
+  PUT dropped mid-body is Transient and retried (§4.5).
+- `D:\Cloud` dry run, then the first real cycles (run by the user): in sync with the main account, nothing to do.
+
+Next, in order:
+
+1. `wds pair set <pair> --mode ...` (and other settings) instead of editing `settings.json`; switch `cloud` to
+   `ApproveAll` (it is still `DryRun`, real cycles pass `--mode ApproveAll`).
+2. Held list for rejected ops and "approve and remember" rules (§10).
+3. Large files: `Range` resume of downloads, journal re-validation of interrupted ops (§6.6, §6.7).
+4. Crawl time (~7 min per cycle, Mail.ru has no folder etags): parallel PROPFINDs within the request limit.
+5. Tray app milestone (§14): watcher, scheduler, `secrets.dat` (DPAPI) instead of `WDS_PASSWORD`.

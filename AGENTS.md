@@ -9,7 +9,7 @@ Read the relevant section before changing sync logic; key ones:
 [edge cases](spec/13-edge-cases.md), [legacy client state](spec/03-legacy-state.md).
 
 Current phase: CLI prototype in real use — `D:\Cloud` is synced with the main account by `wds` (first cycles run by
-the user, §19.9); next are regular `ApproveAll` cycles and the gaps in [§19.8](spec/19-prototype-readiness.md)
+the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-readiness.md)
 (scope, findings and open gaps are in the same file). Start there. `sync` on `D:\Cloud` only with the user's go-ahead.
 
 ## Layout
