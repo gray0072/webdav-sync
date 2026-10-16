@@ -471,6 +471,13 @@ internal static class Commands
             return "n";
         }
 
+        // Discard type-ahead (e.g. a stray Enter from pasting the command during a long crawl): only an answer typed
+        // after the prompt counts.
+        while (Console.KeyAvailable)
+        {
+            Console.ReadKey(intercept: true);
+        }
+
         Console.Write(prompt);
         return (Console.ReadLine() ?? string.Empty).Trim().ToLower(CultureInfo.InvariantCulture);
     }

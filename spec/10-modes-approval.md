@@ -25,6 +25,7 @@ Additional debug controls:
 - CLI: `wds plan <pair> [--full]` prints the plan; `wds sync <pair> --once [--dry-run] [--max-ops N]
   [--mode M] [--yes] [--accept-guards] [--full]`; both take `--keep-local <path>` / `--keep-remote <path>`
   ([§6.4](06-sync-algorithm.md)). The console asks `[y]es / [s]afe ops only / [N]o` for ops that
-  need approval (`--yes` approves); a guard trip needs typing `yes` (or `--accept-guards`). Without an interactive
+  need approval (`--yes` approves); a guard trip needs typing `yes` (or `--accept-guards`). Keys typed before a prompt
+  appears are discarded, so type-ahead never answers it. Without an interactive
   console both default to "no". Exit codes: 0 done, 1 error, 2 partially done, 3 stopped by a guard, the user or
   root sanity.
