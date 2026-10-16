@@ -8,9 +8,9 @@ Read the relevant section before changing sync logic; key ones:
 [sync algorithm](spec/06-sync-algorithm.md), [safety guards](spec/09-safety-guards.md),
 [edge cases](spec/13-edge-cases.md), [legacy client state](spec/03-legacy-state.md).
 
-Current phase: CLI prototype verified on a disposable Mail.ru test pair and by a dry run of `D:\Cloud`; next are
-the first real cycles on `D:\Cloud` (only with the user's explicit go-ahead), see
-[§19.9](spec/19-prototype-readiness.md) (scope, findings and open gaps are in the same file). Start there.
+Current phase: CLI prototype in real use — `D:\Cloud` is synced with the main account by `wds` (first cycles run by
+the user, §19.9); next are regular `ApproveAll` cycles and the gaps in [§19.8](spec/19-prototype-readiness.md)
+(scope, findings and open gaps are in the same file). Start there. `sync` on `D:\Cloud` only with the user's go-ahead.
 
 ## Layout
 

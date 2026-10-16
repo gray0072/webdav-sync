@@ -2,7 +2,8 @@
 
 Status as of 2026-10-16: **CLI prototype implemented** (milestones 1–3 minimal) and **verified on the real
 Mail.ru cloud** with a disposable test pair (runbook §19.9 steps 1–5 done) and a dry run of `D:\Cloud` against
-the main account (step 6 done). Next step: the first real cycles on `D:\Cloud` after the user's decisions (§19.9).
+the main account (step 6 done); `D:\Cloud` is now synced by `wds` (first real cycles done, §19.9). Next step: regular
+`ApproveAll` cycles and the gaps of §19.8.
 
 ## 19.1 Environment (checked)
 
@@ -122,7 +123,10 @@ deletes, the 2 conflicts and the download, then `ApproveAll` with `maxOpsPerCycl
 First real cycle on `D:\Cloud` (2026-10-16, run by the user; deletes confirmed, the 3 changed files kept local
 via `--keep-local`): 44 546 base updates and 2 uploads done, initial sync marked done; the 643 MB upload failed
 mid-body ([§4.4](04-remote-webdav.md)) and, as Offline, aborted the cycle before the deletes (they are last, §6.5).
-Next: re-run the cycle (upload retried as Transient, then the 9 deletes).
+Second cycle: the 643 MB upload succeeded on the first attempt (133 s, ~5 MB/s) and the 9 deletes (227 items)
+went to the cloud trash. Check plan afterwards: local and remote both 43 701 files / 843 folders, base 44 544,
+**nothing to do** — `D:\Cloud` is in sync with the main account and the legacy client is replaced. Next: keep the
+pair in `ApproveAll` for regular cycles, then milestone work (§19.8, tray app §14).
 
 The user provides the WebDAV app password and creates two **empty** folders: local `D:\CloudTest` and remote
 `/webdavsync-test`. Commands below assume the repo root and `wds` = `dotnet run --project src/WebDavSync.Cli --`
