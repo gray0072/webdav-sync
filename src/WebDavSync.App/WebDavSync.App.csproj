@@ -5,6 +5,7 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>WebDavSync</AssemblyName>
+    <ApplicationIcon>../../assets/icon.ico</ApplicationIcon>
     <RootNamespace>WebDavSync.App</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

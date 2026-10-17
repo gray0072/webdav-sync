@@ -176,6 +176,7 @@ internal sealed class TrayContext : ApplicationContext
         _menu.Items.Add(performance);
         _menu.Items.Add(new ToolStripMenuItem("Start with Windows", null, (_, _) => ToggleStartup()) { Checked = StartupCommand() is not null });
         _menu.Items.Add("Open log folder", null, (_, _) => Open(_host.Paths.LogsDir));
+        _menu.Items.Add($"About WebDavSync {Application.ProductVersion.Split('+')[0]}…", null, (_, _) => Open("https://github.com/gray0072/webdav-sync"));
         _menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
     }
 

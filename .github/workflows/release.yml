@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Unit tests
+        run: dotnet test --project tests/WebDavSync.Core.Tests -c Release
+
+      - name: Portable build
+        shell: pwsh
+        run: ./scripts/publish.ps1 -Output dist
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $zip = "WebDavSync-$version-win-x64.zip"
+          Copy-Item LICENSE, README.md, README_ru.md, README_sv.md dist/
+          Compress-Archive -Path dist/* -DestinationPath $zip
+          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  $zip" | Set-Content "$zip.sha256" -Encoding ascii
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $notes = "docs/releases/$tag.md"
+          $zip = '${{ steps.package.outputs.zip }}'
+          if (Test-Path $notes) {
+            gh release create $tag $zip "$zip.sha256" --title "WebDavSync $tag" --notes-file $notes
+          } else {
+            gh release create $tag $zip "$zip.sha256" --title "WebDavSync $tag" --generate-notes
+          }

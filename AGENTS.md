@@ -25,6 +25,14 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
   executor scenarios on temp folders + in-memory remote). `tests/WebDavSync.IntegrationTests/` — against
   `rclone serve webdav` in Docker (skipped without Docker).
 
+## Releases
+
+- Version in `Directory.Build.props` (`<Version>`); user docs: `README.md`, `README_ru.md`, `README_sv.md` (keep the
+  three in sync); app icon and logo: `assets/` (drawn by `scripts/make-icon.ps1`).
+- CI: `.github/workflows/ci.yml` (build + unit tests on Windows). A release is made by pushing a tag `vX.Y.Z`:
+  `.github/workflows/release.yml` tests, runs `scripts/publish.ps1`, zips with LICENSE and READMEs, and creates the
+  GitHub release with notes from `docs/releases/vX.Y.Z.md`.
+
 ## Storage
 
 - App data (settings, logs) — next to the executable in `<app dir>\data\`; portable build: `scripts\publish.ps1`.

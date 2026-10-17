@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        run: dotnet build -c Release
+
+      # Integration tests need rclone in a Linux container; they run locally (see AGENTS.md).
+      - name: Unit tests
+        run: dotnet test --project tests/WebDavSync.Core.Tests -c Release --no-build
