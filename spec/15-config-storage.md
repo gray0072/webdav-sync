@@ -113,5 +113,11 @@ Settings of later milestones (not implemented yet; names reserved): timing ([§8
 `maxParallelTransfers`, `maxParallelRequests`, schedule), selective sync policy ([§12.2](12-filters.md):
 `syncRootFiles`, `newRemoteRootFolders`), `maxFileSize` ([§12.3](12-filters.md)).
 
+CLI: `wds pair show <pair>` prints all settings; `wds pair set <pair> name=value ...` changes them, all or nothing
+(`none` clears an optional value; sizes accept `KB`/`MB`/`GB`/`TB`, binary units). Not editable: `id`, `localRoot`,
+`remoteUrl`, `remoteRoot` (identity of the pair: base and root markers, [§9](09-safety-guards.md) #1) and, until
+exclusion handling ([§12.2](12-filters.md): drop the subtree's base on exclude, union mode on re-include) exists,
+`excludedFolders` / `excludePatterns`.
+
 The data folder can be overridden with `--data-dir` or the environment variable `WDS_DATA_DIR` (used by tests
 and for running several setups side by side).

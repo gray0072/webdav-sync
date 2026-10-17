@@ -115,7 +115,83 @@ internal static class Commands
             return Task.FromResult(0);
         }));
 
-        return new Command("pair", "Manage sync pairs.") { add, list };
+        var showPair = new Argument<string>("pair") { Description = "Pair name or id." };
+        var show = new Command("show", "Print all settings of a pair (§15.5).") { showPair };
+        show.SetAction((parse, _) => Run(parse.GetValue(dataDir), "pair show", ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(showPair)!);
+            foreach (var (name, value) in SettingValues(pair))
+            {
+                Console.WriteLine($"{name,-26} {value}{(PairSettingsEditor.Fixed.Contains(name) ? "  (fixed)" : string.Empty)}");
+            }
+
+            return Task.FromResult(0);
+        }));
+
+        var setPair = new Argument<string>("pair") { Description = "Pair name or id." };
+        var assignments = new Argument<string[]>("settings")
+        {
+            Description = "One or more name=value, e.g. mode=ApproveAll maxOpsPerCycle=20 (none clears an optional value), minFreeDiskSpace=4GB.",
+            Arity = ArgumentArity.OneOrMore,
+        };
+        var set = new Command("set", "Change settings of a pair; all or nothing.") { setPair, assignments };
+        set.SetAction((parse, _) => Run(parse.GetValue(dataDir), "pair set", ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(setPair)!);
+            var before = SettingValues(pair);
+            try
+            {
+                PairSettingsEditor.Set(pair, parse.GetValue(assignments)!);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new CliException(ex.Message);
+            }
+
+            if (ctx.Settings.Pairs.Any(p => p != pair && string.Equals(p.Name, pair.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new CliException($"Pair '{pair.Name}' already exists.");
+            }
+
+            var changes = SettingValues(pair).Where(kv => before[kv.Key] != kv.Value).ToList();
+            if (changes.Count == 0)
+            {
+                Console.WriteLine("No changes.");
+                return Task.FromResult(0);
+            }
+
+            ctx.SaveSettings();
+            foreach (var (name, value) in changes)
+            {
+                Console.WriteLine($"{name}: {before[name]} -> {value}");
+                ctx.Logger.LogInformationSafe("Pair {Pair}: {Setting} changed from {Old} to {New}", pair.Id, name, before[name], value);
+            }
+
+            return Task.FromResult(0);
+        }));
+
+        return new Command("pair", "Manage sync pairs.") { add, list, show, set };
+    }
+
+    /// <summary>Settings of a pair as displayed by <c>pair show</c>, in schema order; unset optional values are <c>none</c>.</summary>
+    private static Dictionary<string, string> SettingValues(PairSettings pair)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(pair, AppSettings.JsonOptions);
+        foreach (var property in typeof(PairSettings).GetProperties().Where(p => p.CanWrite))
+        {
+            var name = AppSettings.JsonOptions.PropertyNamingPolicy!.ConvertName(property.Name);
+            result[name] = json.TryGetProperty(name, out var value)
+                ? value.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.String => value.GetString()!,
+                    System.Text.Json.JsonValueKind.Array => "[" + string.Join(", ", value.EnumerateArray().Select(v => v.ToString())) + "]",
+                    _ => value.GetRawText(),
+                }
+                : "none";
+        }
+
+        return result;
     }
 
     private static (Option<string[]> KeepLocal, Option<string[]> KeepRemote) KeepOptions() =>
@@ -426,6 +502,9 @@ internal static class Commands
 
     private static void LogErrorSafe(this Microsoft.Extensions.Logging.ILogger logger, Exception ex, string command) =>
         Microsoft.Extensions.Logging.LoggerExtensions.LogError(logger, ex, "Command {Command} failed", command);
+
+    private static void LogInformationSafe(this Microsoft.Extensions.Logging.ILogger logger, string message, params object?[] args) =>
+        Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(logger, message, args);
 
     private static void PrintImport(LegacyImportResult r)
     {
