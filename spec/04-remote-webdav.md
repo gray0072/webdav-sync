@@ -66,7 +66,13 @@ WebDAV has no change feed. Strategy, in order of preference (chosen by probe):
    within `maxRequestsPerSecond`; sequential listings were bound by latency (Mail.ru: ~0.5 s each, ~7 min for 843
    folders). Results are processed one at a time, so the snapshot does not depend on arrival order; a listing error
    that stops the cycle cancels the outstanding ones.
-3. Targeted re-list of folders touched by our own operations or by the last local changes.
+3. Targeted re-list of folders touched by our own operations or by the last local changes. Implemented
+   (`RemoteScanner.RefreshAsync`, used by the tray service, §8): the cached snapshot of the last cycle is kept;
+   each re-listed folder's direct children are replaced, new subfolders are crawled, cached subfolders that vanished
+   or became files are dropped with their subtrees, everything else stays as cached. A key that is not a cached
+   folder is replaced by its nearest cached ancestor. If a re-listed folder is gone, the cycle falls back to a full
+   crawl. A stale cached part is safe: every op re-checks the remote state before acting and a recursive delete
+   re-crawls its subtree (§6.6); remote changes elsewhere are picked up by the next full crawl.
 
 Remote identity of a file version: `etag` if present on both the item and the base, otherwise `(size, mtime)`.
 Exceptions: items inside a subtree moved on the server count as unchanged when size and mtime match (servers may

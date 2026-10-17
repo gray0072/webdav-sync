@@ -19,5 +19,9 @@ recursive; events under `.webdavsync\` and built-in ignored names dropped; a buf
 which rescans everything), the poll interval, "sync now" and the end of a pause. Echoes: the local paths (and their
 folders) of the ops about to run are ignored until 10 s after the cycle. If `maxOpsPerCycle` cut runnable ops, the
 next cycle starts right away. Errors: auth → `Error`, no retry until "sync now"; offline / transient → `Offline`,
-retry after 1, 2, 4 … 15 min; anything else → `Error`, retry at the poll interval. Not implemented yet:
-`fileStableFor`, `localFullRescanInterval`, `idleBackoff`.
+retry after 1, 2, 4 … 15 min; anything else → `Error`, retry at the poll interval. Full or incremental: the first cycle, "sync now", retries and the poll crawl the remote fully; cycles caused by
+local changes (and the follow-up after a `maxOpsPerCycle` cut) re-list only the parents of the changed paths and the
+folders our own ops touched (§4.3 #3), as long as the cached snapshot is complete and the poll interval since the last
+full crawl has not passed. The poll is counted from the last full crawl, so steady local activity cannot postpone
+it. A watcher overflow or a failed cycle drops the cache. Not implemented yet: `fileStableFor`,
+`localFullRescanInterval`, `idleBackoff`.

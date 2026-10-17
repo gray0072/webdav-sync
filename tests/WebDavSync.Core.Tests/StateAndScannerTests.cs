@@ -190,6 +190,56 @@ public sealed class RemoteScannerTests
         Assert.InRange(slow.MaxInFlight, 2, 4);
     }
 
+    [Fact]
+    public async Task Refresh_relists_only_the_given_folders_of_a_cached_snapshot()
+    {
+        var store = new InMemoryRemoteStore();
+        store.AddFile("/root/A/a1.txt", "a1");
+        store.AddFile("/root/A/Old/deep.txt", "deep");
+        store.AddFile("/root/A/Kept/k.txt", "k");
+        store.AddFile("/root/B/b1.txt", "b1");
+        var ct = TestContext.Current.CancellationToken;
+        var scanner = new RemoteScanner(store, SyncFilter.Empty, NullLogger.Instance, parallel: 2);
+        var cached = await scanner.CrawlAsync("/root", ct: ct);
+
+        store.AddFile("/root/A/a2.txt", "new in A");
+        store.AddFile("/root/A/New/Sub/n.txt", "new subtree");
+        await store.DeleteAsync("/root/A/Old", ct);
+        store.AddFile("/root/B/b2.txt", "new in B, not re-listed");
+        var lists = 0;
+        store.ListFault = _ =>
+        {
+            lists++;
+            return null;
+        };
+
+        var refreshed = await scanner.RefreshAsync(cached, "/root", ["a/a2.txt", "a"], ct);
+
+        var keys = refreshed!.Entries.Keys.Order(StringComparer.Ordinal).ToList();
+        Assert.Contains("a/a2.txt", keys);
+        Assert.Contains("a/new/sub/n.txt", keys);
+        Assert.Contains("a/kept/k.txt", keys);
+        Assert.DoesNotContain(keys, k => k.StartsWith("a/old", StringComparison.Ordinal));
+        Assert.DoesNotContain("b/b2.txt", keys);
+        Assert.DoesNotContain("a/old", refreshed.ListedFolders);
+        Assert.Contains("a/new/sub", refreshed.ListedFolders);
+        Assert.True(refreshed.IsComplete);
+        Assert.Equal(3, lists);
+    }
+
+    [Fact]
+    public async Task Refresh_of_a_vanished_folder_asks_for_a_full_crawl()
+    {
+        var store = new InMemoryRemoteStore();
+        store.AddFile("/root/A/a.txt", "a");
+        var ct = TestContext.Current.CancellationToken;
+        var scanner = new RemoteScanner(store, SyncFilter.Empty, NullLogger.Instance);
+        var cached = await scanner.CrawlAsync("/root", ct: ct);
+        await store.DeleteAsync("/root/A", ct);
+
+        Assert.Null(await scanner.RefreshAsync(cached, "/root", ["a"], ct));
+    }
+
     /// <summary>Adds latency to listings and records how many were in flight at once.</summary>
     private sealed class SlowStore(InMemoryRemoteStore inner) : IRemoteStore
     {

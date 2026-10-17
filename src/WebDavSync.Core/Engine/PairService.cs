@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using WebDavSync.Core.Config;
 using WebDavSync.Core.Execution;
+using WebDavSync.Core.Model;
 using WebDavSync.Core.Planning;
 using WebDavSync.Core.Remote;
 
@@ -66,6 +67,10 @@ public sealed class PairService : IAsyncDisposable
     private Task? _loop;
 
     private bool _syncNow;
+    private bool _continue;
+    private RemoteSnapshot? _cache;
+    private DateTime? _lastFullCrawl;
+    private readonly HashSet<string> _refresh = new(StringComparer.Ordinal);
     private DateTime? _firstChange;
     private DateTime? _lastChange;
     private DateTime? _lastCycleEnd;
@@ -197,6 +202,9 @@ public sealed class PairService : IAsyncDisposable
 
             _firstChange ??= now;
             _lastChange = now;
+            var key = PathKey.FromPath(relative.Replace(Path.DirectorySeparatorChar, '/'));
+            _refresh.Add(key);
+            _refresh.Add(PathKey.Parent(key));
         }
 
         Wake();
@@ -292,10 +300,10 @@ public sealed class PairService : IAsyncDisposable
             }
 
             var now = DateTime.UtcNow;
-            var (due, reason) = NextRun(now);
+            var (due, reason, incremental) = NextRun(now);
             if (due is { } at && at <= now)
             {
-                await RunCycleAsync(reason, stop).ConfigureAwait(false);
+                await RunCycleAsync(reason, incremental, stop).ConfigureAwait(false);
                 continue;
             }
 
@@ -310,10 +318,16 @@ public sealed class PairService : IAsyncDisposable
         }
     }
 
-    private (DateTime? Due, string Reason) NextRun(DateTime now)
+    /// <summary>
+    /// When the next cycle is due and whether it may use the cached remote snapshot: local changes and continuations
+    /// do, until the poll interval since the last full crawl ends; start, sync now, retries and polls crawl fully.
+    /// </summary>
+    private (DateTime? Due, string Reason, bool Incremental) NextRun(DateTime now)
     {
         lock (_lock)
         {
+            var poll = (_lastFullCrawl ?? now) + Pair.RemotePollInterval;
+            var cacheUsable = _cache is not null && now < poll;
             if (_paused)
             {
                 if (_pausedUntil is { } until && now >= until)
@@ -324,51 +338,71 @@ public sealed class PairService : IAsyncDisposable
                 }
                 else
                 {
-                    return (_pausedUntil, "pause ended");
+                    return (_pausedUntil, "pause ended", false);
                 }
             }
 
             if (_syncNow)
             {
-                return (now, "sync now");
+                return (now, "sync now", false);
+            }
+
+            if (_continue)
+            {
+                return (now, "more ops", cacheUsable);
             }
 
             if (_firstChange is { } first && _lastChange is { } last)
             {
                 var changesDue = Min(last + Pair.LocalQuietPeriod, first + Pair.MaxBatchDelay);
-                return (_retryAt is { } r && r > changesDue ? r : changesDue, "local changes");
+                return (_retryAt is { } r && r > changesDue ? r : changesDue, "local changes", cacheUsable && _retryAt is null);
             }
 
             if (_retryOnlyManually)
             {
-                return (null, string.Empty);
+                return (null, string.Empty, false);
             }
 
             if (_retryAt is { } retry)
             {
-                return (retry, "retry");
+                return (retry, "retry", false);
             }
 
-            return ((_lastCycleEnd ?? now) + Pair.RemotePollInterval, "remote poll");
+            return (poll, "remote poll", false);
         }
     }
 
-    private async Task RunCycleAsync(string reason, CancellationToken stop)
+    private async Task RunCycleAsync(string reason, bool incremental, CancellationToken stop)
     {
+        PlanOptions options;
         lock (_lock)
         {
             _syncNow = false;
+            _continue = false;
             _firstChange = null;
             _lastChange = null;
             _retryAt = null;
+            options = incremental && _cache is { } cache
+                ? new PlanOptions { CachedRemote = cache, RefreshFolders = _refresh.ToList() }
+                : new PlanOptions();
+            _refresh.Clear();
         }
 
-        _logger.LogInformation("Pair {Pair}: cycle ({Reason})", Pair.Name, reason);
+        _logger.LogInformation("Pair {Pair}: cycle ({Reason}, {Kind})", Pair.Name, reason, options.CachedRemote is null ? "full crawl" : $"{options.RefreshFolders.Count} folders re-listed");
         SetStatus(PairState.Syncing, "Checking for changes");
         try
         {
             using var engine = SyncEngine.Open(Pair, _remote, _logger);
-            var cycle = await engine.PlanAsync(new InlineProgress<string>(text => SetStatus(PairState.Syncing, text)), stop).ConfigureAwait(false);
+            var cycle = await engine.PlanAsync(options, new InlineProgress<string>(text => SetStatus(PairState.Syncing, text)), stop).ConfigureAwait(false);
+            lock (_lock)
+            {
+                _cache = cycle.Remote.IsComplete ? cycle.Remote : null;
+                if (!cycle.RemoteFromCache)
+                {
+                    _lastFullCrawl = DateTime.UtcNow;
+                }
+            }
+
             if (cycle.Guards.HasErrors)
             {
                 lock (_lock)
@@ -404,7 +438,7 @@ public sealed class PairService : IAsyncDisposable
             lock (_lock)
             {
                 _pending = needing.Count > 0 ? new PendingApproval(cycle, needing, cycle.Guards.RequiresApproval, DateTime.UtcNow) : null;
-                _syncNow |= more;
+                _continue |= more;
                 _offlineDelay = _options.OfflineRetryMin;
             }
 
@@ -441,9 +475,21 @@ public sealed class PairService : IAsyncDisposable
         var total = ops.Count(o => !o.IsBaseOnly);
 
         // Mark before executing: the watcher may report a moved-in file before the op reports completion.
+        // The remote folders our ops touch are stale in the cached snapshot: re-list them next time.
         foreach (var op in ops.Where(o => !o.IsBaseOnly))
         {
             MarkEcho(op);
+            lock (_lock)
+            {
+                foreach (var key in new[] { op.Key, op.NewKey })
+                {
+                    if (key is not null)
+                    {
+                        _refresh.Add(key);
+                        _refresh.Add(PathKey.Parent(key));
+                    }
+                }
+            }
         }
 
         var result = await engine.ExecuteAsync(cycle, ops, new InlineProgress<OpResult>(r =>
@@ -549,6 +595,7 @@ public sealed class PairService : IAsyncDisposable
         _logger.LogWarning(ex, "Pair {Pair}: cycle failed", Pair.Name);
         lock (_lock)
         {
+            _cache = null;
             _lastCycleEnd = DateTime.UtcNow;
             _retryAt = retryIn is { } r ? DateTime.UtcNow + r : null;
             _retryOnlyManually = manualOnly;
@@ -596,7 +643,7 @@ public sealed class PairService : IAsyncDisposable
             return (null, string.Empty);
         }
 
-        return (_retryAt ?? (_lastCycleEnd ?? DateTime.UtcNow) + Pair.RemotePollInterval, string.Empty);
+        return (_retryAt ?? (_lastFullCrawl ?? DateTime.UtcNow) + Pair.RemotePollInterval, string.Empty);
     }
 
     private string PausedText() =>
@@ -654,6 +701,7 @@ public sealed class PairService : IAsyncDisposable
             {
                 _firstChange ??= DateTime.UtcNow;
                 _lastChange = DateTime.UtcNow;
+                _cache = null;
             }
 
             Wake();

@@ -28,6 +28,9 @@ public sealed record CyclePlan(
 {
     /// <summary>Ops left out of <see cref="Plan"/> by the held list (§10).</summary>
     public IReadOnlyList<SyncOp> Held { get; init; } = [];
+
+    /// <summary>The remote snapshot is a refreshed cached one, not a full crawl (§4.3 #3).</summary>
+    public bool RemoteFromCache { get; init; }
 }
 
 /// <summary>Per-cycle user input for planning.</summary>
@@ -38,6 +41,15 @@ public sealed record PlanOptions
 
     /// <summary>Keys whose ops (whole subtree) are put into the held list before guards and approval (§10).</summary>
     public IReadOnlyCollection<string> Hold { get; init; } = [];
+
+    /// <summary>
+    /// Remote snapshot of an earlier cycle: only <see cref="RefreshFolders"/> are re-listed instead of a full crawl
+    /// (§4.3 #3). Falls back to a full crawl when a re-listed folder is gone.
+    /// </summary>
+    public RemoteSnapshot? CachedRemote { get; init; }
+
+    /// <summary>Folder keys to re-list with <see cref="CachedRemote"/>.</summary>
+    public IReadOnlyCollection<string> RefreshFolders { get; init; } = [];
 }
 
 /// <summary>
@@ -181,16 +193,34 @@ public sealed class SyncEngine : IDisposable
         var filter = Filter;
 
         RemoteSnapshot remote;
+        var remoteFromCache = false;
         if (rootItem is null)
         {
             remote = new RemoteSnapshot(new Dictionary<string, RemoteEntry>(), new HashSet<string> { string.Empty });
         }
         else
         {
-            status?.Report("Crawling remote...");
-            remote = await new RemoteScanner(Remote, filter, _logger, Pair.MaxParallelRequests)
-                .CrawlAsync(remoteRoot, string.Empty, new InlineProgress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
-                .ConfigureAwait(false);
+            var scanner = new RemoteScanner(Remote, filter, _logger, Pair.MaxParallelRequests);
+            RemoteSnapshot? refreshed = null;
+            if (options.CachedRemote is { } cached)
+            {
+                status?.Report($"Checking {options.RefreshFolders.Count} remote folders...");
+                refreshed = await scanner.RefreshAsync(cached, remoteRoot, options.RefreshFolders, ct).ConfigureAwait(false);
+            }
+
+            if (refreshed is not null)
+            {
+                remote = refreshed;
+                remoteFromCache = true;
+                notes.Add($"Remote: cached snapshot, {options.RefreshFolders.Count} folders re-listed.");
+            }
+            else
+            {
+                status?.Report("Crawling remote...");
+                remote = await scanner
+                    .CrawlAsync(remoteRoot, string.Empty, new InlineProgress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
+                    .ConfigureAwait(false);
+            }
         }
 
         status?.Report("Scanning local...");
@@ -255,7 +285,7 @@ public sealed class SyncEngine : IDisposable
         _logger.LogInformation(
             "Cycle {Cycle}: plan {Ops} ops ({Actions} actions), {Warnings} warnings, guards: {Trips} trips, {Errors} errors",
             cycleId, plan.Ops.Count, plan.ActionOps.Count(), plan.Warnings.Count, guards.Trips.Count, guards.Errors.Count);
-        return new CyclePlan(cycleId, plan, guards, local, remote, baseEntries.Count, unionMode, createRoot, createMarker, notes) { Held = held };
+        return new CyclePlan(cycleId, plan, guards, local, remote, baseEntries.Count, unionMode, createRoot, createMarker, notes) { Held = held, RemoteFromCache = remoteFromCache };
     }
 
     /// <summary>Puts ops into the held list (§10): they are not proposed again until their item changes on either side.</summary>

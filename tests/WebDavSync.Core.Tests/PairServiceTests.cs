@@ -82,6 +82,38 @@ public sealed class PairServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Local_change_relists_only_touched_folders_and_sync_now_crawls_everything()
+    {
+        for (var i = 0; i < 8; i++)
+        {
+            _local.File($"F{i}/x.txt", $"x{i}");
+        }
+
+        var service = await StartInSyncAsync();
+        var lists = 0;
+        _remote.ListFault = _ =>
+        {
+            Interlocked.Increment(ref lists);
+            return null;
+        };
+        _remote.AddFile("/test/F7/remote-only.txt", "elsewhere");
+
+        var path = _local.File("F3/new.txt", "local");
+        var before = service.Status.LastSyncUtc;
+        service.NotifyLocalChange(path);
+        await WaitAsync(service, s => s.State == PairState.Idle && s.LastSyncUtc > before);
+
+        Assert.Equal("local", _remote.Read("/test/F3/new.txt"));
+        Assert.InRange(Volatile.Read(ref lists), 1, 3);
+        Assert.False(File.Exists(_local.Full("F7/remote-only.txt")));
+
+        Volatile.Write(ref lists, 0);
+        await SyncNowAndWaitAsync(service);
+        Assert.True(Volatile.Read(ref lists) >= 9);
+        Assert.Equal("elsewhere", File.ReadAllText(_local.Full("F7/remote-only.txt")));
+    }
+
+    [Fact]
     public async Task Watcher_picks_up_a_new_file_and_ignores_our_own_download()
     {
         var service = await StartInSyncAsync(watch: true);
