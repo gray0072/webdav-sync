@@ -38,10 +38,12 @@ Rate-limited (one per category per 10 min), never a toast per file.
   ~2 s per pulse); a background check is quiet (Checking looks like Idle), so the periodic crawl does not animate; the most severe pair state wins
   (Error > Needs attention > Offline > Syncing > Paused > Waiting > Idle). Tooltip: status text (+ last sync time).
 - Menu (per pair; a submenu per pair when there are several): status, Open folder, Open cloud in browser (Mail.ru),
-  Sync now, Pause ▸ (15 min, 1 h, until tomorrow 06:00, until resumed) / Resume, Approvals (N)…, Mode ▸, Check cloud
+  Sync now, Pause ▸ (15 min, 1 h, until tomorrow 06:00, until resumed) / Resume, Approvals (N)…, Choose folders…, Mode ▸, Check cloud
   every ▸ (15 min … 24 h, `remotePollInterval`), Set password…; then Start with Windows (HKCU `Run`, with the data folder), Open log folder, Exit. Left click opens the
   approvals of a pair that has some, otherwise the folder. Mode changes re-read `settings.json` before saving.
 - Approvals window: pending ops with checkboxes (red: deletes, overwrites, conflicts), Approve checked / Approve all
   (with a confirmation that counts deletions; a guard trip lists the trips), Reject checked (hold), Check all.
 - Notifications: balloon tips for approvals waiting, failed ops and errors, one per pair and category per 10 min.
-- Not yet: Activity, Conflicts and Errors windows, Choose folders, Settings window, Windows toasts.
+- Choose folders: checkbox list of the top-level folders (local + cloud / local only / cloud only); unchecking
+  asks for confirmation and states that nothing is deleted (§12.2).
+- Not yet: Activity, Conflicts and Errors windows, Settings window, Windows toasts.

@@ -39,6 +39,16 @@ Applying a change (takes effect immediately: the current cycle is cut short and 
 - Rename of a top-level folder (detected as a move, [§6.3](06-sync-algorithm.md)) keeps its selection state.
   An excluded remote folder deleted remotely disappears from the list.
 
+Implemented (2026-10-17): CLI `wds folders <pair> [--exclude <name>] [--include <name>]` and the tray's
+"Choose folders…" (both list the local folders and a live listing of the remote root). The selection is
+`excludedFolders` in `settings.json`; `state.db` `meta.excluded_folders` keeps the keys the state was last planned
+with. Before every plan the engine compares them and drops the base subtree of every folder whose state changed
+(either way), and crawls fully instead of using a cached or base-made snapshot. Exclude = keep local copy (the
+"remove local copy" choice is not implemented). Including again therefore needs no special mode: without base
+entries nothing in the subtree can be deleted, identical files become `UpdateBase`, differing ones conflicts
+(keep both), one-sided ones are copied. `SyncRootFiles` and `NewRemoteRootFolders` are not implemented (root files are
+always synced, new remote folders are included).
+
 ## 12.3 User filters
 
 Glob patterns (include/exclude), max file size. Excluded items are neither uploaded nor deleted on the other side.

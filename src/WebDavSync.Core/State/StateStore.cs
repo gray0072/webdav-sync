@@ -35,6 +35,7 @@ public static class MetaKeys
     public const string LastCycle = "last_cycle";
     public const string RemoteMarkerCreated = "remote_marker_created";
     public const string LastFullCrawl = "last_full_crawl";
+    public const string ExcludedFolders = "excluded_folders";
 }
 
 /// <summary><c>state.db</c> (§15.3): SQLite in WAL mode, raw SQL.</summary>

@@ -43,6 +43,9 @@ public sealed class SyncFilter
 
     public static SyncFilter Empty { get; } = new();
 
+    /// <summary>Excluded folders as normalized keys.</summary>
+    public IReadOnlyList<string> ExcludedFolderKeys => _excludedFolderKeys;
+
     public static SyncFilter For(PairSettings pair) => new(pair.ExcludedFolders, pair.ExcludePatterns);
 
     public static bool IsBuiltInIgnored(string name) =>

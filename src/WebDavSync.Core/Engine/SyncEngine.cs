@@ -195,6 +195,15 @@ public sealed class SyncEngine : IDisposable
             }
         }
 
+        // Selection changed since the last plan (§12.2): drop the base of those folders before anything else.
+        var selectionChanged = SelectiveSync.ApplyChanges(Pair, Store);
+        if (selectionChanged.Count > 0)
+        {
+            notes.Add($"Folder selection changed ({string.Join(", ", selectionChanged)}): their base was dropped; included folders merge without deletes.");
+            _logger.LogInformation("Selective sync changed for {Folders}; base subtrees dropped", string.Join(", ", selectionChanged));
+            options = options with { CachedRemote = null, RemoteFromBase = false };
+        }
+
         var baseEntries = Store.LoadBase();
         var filter = Filter;
 

@@ -72,6 +72,9 @@ internal sealed class PairRuntime(PairSettings pair, AppHost host)
 
     public PairService? Service { get; private set; }
 
+    /// <summary>The WebDAV client, while the pair runs.</summary>
+    public IRemoteStore? Remote => _client;
+
     /// <summary>Why the service is not running (e.g. no password).</summary>
     public string? StartError { get; private set; }
 

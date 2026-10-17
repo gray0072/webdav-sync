@@ -401,6 +401,62 @@ public sealed class EngineScenarioTests : IDisposable
     }
 
     [Fact]
+    public async Task Excluded_folder_is_left_alone_and_merges_without_deletes_when_included_again()
+    {
+        _local.File("Photos/a.jpg", "a");
+        _local.File("Photos/b.jpg", "b");
+        _local.File("Photos/c.jpg", "c");
+        _local.File("Docs/d.txt", "d");
+        await SyncAsync();
+        await SyncAsync();
+
+        _pair.ExcludedFolders = ["Photos"];
+        File.Delete(_local.Full("Photos/a.jpg"));
+        _remote.AddFile("/test/Photos/new-remote.jpg", "r");
+        var (excluded, _) = await SyncAsync();
+        PlanAssert.Empty(excluded.Plan);
+        Assert.Contains(excluded.Notes, n => n.Contains("selection changed", StringComparison.OrdinalIgnoreCase));
+        Assert.True(_remote.Exists("/test/Photos/a.jpg"));
+        Assert.False(File.Exists(_local.Full("Photos/new-remote.jpg")));
+        using (var engine = SyncEngine.Open(_pair, _remote, NullLogger.Instance))
+        {
+            Assert.DoesNotContain(engine.Store.LoadBase().Keys, k => k.StartsWith("photos", StringComparison.Ordinal));
+        }
+
+        File.WriteAllText(_local.Full("Photos/b.jpg"), "b edited locally");
+        _pair.ExcludedFolders = [];
+        var (included, result) = await SyncAsync();
+
+        PlanAssert.NoDeletes(included.Plan);
+        Assert.Contains(included.Plan.Ops, o => o.Type == OpType.Download && o.Key == "photos/a.jpg");
+        Assert.Contains(included.Plan.Ops, o => o.Type == OpType.Download && o.Key == "photos/new-remote.jpg");
+        Assert.Contains(included.Plan.Ops, o => o.Type == OpType.Conflict && o.Key == "photos/b.jpg");
+        // Identical on both sides: adopted (a Compare here, as the in-memory remote has no content hash).
+        Assert.Contains(included.Plan.Ops, o => o.Type is OpType.UpdateBase or OpType.Compare && o.Key == "photos/c.jpg");
+        Assert.True(result.AllDone);
+        await AssertUpToDateAsync();
+    }
+
+    [Fact]
+    public async Task Folder_list_merges_both_sides_and_marks_excluded_ones()
+    {
+        _local.Dir("Local Only");
+        _local.Dir("Both");
+        _remote.AddDir("/test/Both");
+        _remote.AddDir("/test/Cloud Only");
+        _pair.ExcludedFolders = ["Cloud Only", "Both/Deep"];
+
+        var (folders, error) = await SelectiveSync.ListAsync(_pair, _remote, TestContext.Current.CancellationToken);
+
+        Assert.Null(error);
+        Assert.Equal(["Both", "Cloud Only", "Local Only"], folders.Select(f => f.Name));
+        Assert.Equal((true, (bool?)true, false), (folders[0].OnLocal, folders[0].OnRemote, folders[0].Excluded));
+        Assert.Equal((false, (bool?)true, true), (folders[1].OnLocal, folders[1].OnRemote, folders[1].Excluded));
+        Assert.Equal((true, (bool?)false, false), (folders[2].OnLocal, folders[2].OnRemote, folders[2].Excluded));
+        Assert.Equal(["Both/Deep", "Local Only"], SelectiveSync.WithTopLevelExcluded(_pair, ["Local Only"]));
+    }
+
+    [Fact]
     public void Schema_1_state_db_gets_the_new_held_table()
     {
         var path = Path.Combine(_local.Path, "old-state.db");

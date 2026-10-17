@@ -78,7 +78,8 @@ meta(key PK, value)
 - `local_path` / `remote_path`: real names per side (case and Unicode normalization may differ, §6.9).
 - `remote_confirmed = 0` for entries imported from `.cloud.db` until the first crawl adopts them ([§3.5](03-legacy-state.md)).
 - Journal status: `Running`, `Done`, `Failed`, `Skipped`, `Interrupted` ([§6.7](06-sync-algorithm.md)).
-- `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `last_full_crawl` (UTC ticks), `legacy_import`
+- `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `last_full_crawl` (UTC ticks),
+  `excluded_folders` (JSON keys the state was last planned with, §12.2), `legacy_import`
   (import stats, JSON), `last_cycle` (summary, JSON), `capabilities` (reserved for probe results).
 - `held`: the held list ([§10](10-modes-approval.md)); `type` is the op type, `path` its display path, `state` the
   item's state on both sides when it was held. Schema 2; opening a schema-1 DB drops its unused `held` table.
@@ -119,7 +120,7 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 | `maxBatchDelay` | duration | `00:01:00` | [§8](08-timing.md). |
 | `remotePollInterval` | duration | `00:15:00` | [§8](08-timing.md); 1 min – 1 day. |
 | `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
-| `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)). |
+| `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)); CLI `wds folders`. |
 | `excludePatterns` | string[] | `[]` | Globs (`*`, `?`); without `/` matched against the name, otherwise against the path ([§12.3](12-filters.md)). |
 | `autoApprove` | `{type, folder, overwrite}[]` | `[]` | "Approve and remember" rules ([§10](10-modes-approval.md)); CLI `wds rule`. |
 
@@ -130,9 +131,9 @@ Settings of later milestones (not implemented yet; names reserved): timing ([§8
 
 CLI: `wds pair show <pair>` prints all settings; `wds pair set <pair> name=value ...` changes them, all or nothing
 (`none` clears an optional value; sizes accept `KB`/`MB`/`GB`/`TB`, binary units). Not editable: `id`, `localRoot`,
-`remoteUrl`, `remoteRoot` (identity of the pair: base and root markers, [§9](09-safety-guards.md) #1) and, until
-exclusion handling ([§12.2](12-filters.md): drop the subtree's base on exclude, union mode on re-include) exists,
-`excludedFolders` / `excludePatterns`; `autoApprove` is changed with `wds rule add|remove`.
+`remoteUrl`, `remoteRoot` (identity of the pair: base and root markers, [§9](09-safety-guards.md) #1);
+`excludePatterns` (pattern changes need the same base handling as folders, §12.2); `excludedFolders` is changed with
+`wds folders`, `autoApprove` with `wds rule add|remove`.
 
 The data folder can be overridden with `--data-dir` or the environment variable `WDS_DATA_DIR` (used by tests
 and for running several setups side by side).

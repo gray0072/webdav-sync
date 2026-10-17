@@ -197,6 +197,7 @@ internal sealed class TrayContext : ApplicationContext
 
         var pending = service?.Pending?.Ops.Count ?? 0;
         items.Add(new ToolStripMenuItem($"Approvals ({pending})…", null, (_, _) => ShowApprovals(pair)) { Enabled = service is not null });
+        items.Add(new ToolStripMenuItem("Choose folders…", null, (_, _) => ChooseFolders(pair)) { Enabled = pair.Remote is not null });
 
         var mode = new ToolStripMenuItem($"Mode: {pair.Pair.Mode}");
         foreach (var m in Enum.GetValues<SyncMode>())
@@ -226,6 +227,31 @@ internal sealed class TrayContext : ApplicationContext
         {
             _host.SaveSetting(pair.Pair, p => p.Mode = mode);
             _host.Logger.LogInformation("Pair {Pair}: mode set to {Mode} from the tray", pair.Pair.Id, mode);
+            pair.Service?.SyncNow();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            MessageBox.Show(ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ChooseFolders(PairRuntime pair)
+    {
+        if (pair.Remote is not { } remote)
+        {
+            return;
+        }
+
+        using var form = new FoldersForm(pair.Pair, remote);
+        if (form.ShowDialog() != DialogResult.OK || form.Excluded is not { } excluded)
+        {
+            return;
+        }
+
+        try
+        {
+            _host.SaveSetting(pair.Pair, p => p.ExcludedFolders = [.. excluded]);
+            _host.Logger.LogInformation("Pair {Pair}: excluded folders set to {Folders} from the tray", pair.Pair.Id, string.Join(", ", excluded));
             pair.Service?.SyncNow();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

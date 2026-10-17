@@ -584,6 +584,72 @@ internal static class Commands
         }
     }
 
+    public static Command Folders(Option<string?> dataDir)
+    {
+        var pairArg = new Argument<string>("pair") { Description = "Pair name or id." };
+        var exclude = new Option<string[]>("--exclude") { Description = "Stop syncing this top-level folder; nothing is deleted on either side (§12.2); repeatable." };
+        var include = new Option<string[]>("--include") { Description = "Sync this top-level folder again; it merges without deletes; repeatable." };
+        var command = new Command("folders", "List the top-level folders and choose which ones are synced (§12.2).") { pairArg, exclude, include };
+        command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "folders", async ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
+            using var client = ctx.CreateClient(pair);
+            var (folders, remoteError) = await SelectiveSync.ListAsync(pair, client, ct);
+            var toExclude = parse.GetValue(exclude) ?? [];
+            var toInclude = parse.GetValue(include) ?? [];
+            if (toExclude.Length > 0 || toInclude.Length > 0)
+            {
+                var byKey = folders.ToDictionary(f => f.Key);
+                foreach (var name in toExclude.Concat(toInclude))
+                {
+                    var key = TopKey(name);
+                    if (key.Contains('/'))
+                    {
+                        throw new CliException($"'{name}' is not a top-level folder.");
+                    }
+
+                    if (!byKey.ContainsKey(key))
+                    {
+                        throw new CliException($"No top-level folder '{name}' on either side.");
+                    }
+                }
+
+                var excluded = folders.Where(f => f.Excluded).Select(f => f.Name)
+                    .Where(n => !toInclude.Any(i => TopKey(i) == PathKey.FromPath(n)))
+                    .Concat(toExclude.Select(n => byKey[TopKey(n)].Name))
+                    .ToList();
+                pair.ExcludedFolders = SelectiveSync.WithTopLevelExcluded(pair, excluded);
+                ctx.SaveSettings();
+                ctx.Logger.LogInformationSafe("Pair {Pair}: excluded folders set to {Folders}", pair.Id, string.Join(", ", pair.ExcludedFolders));
+                Console.WriteLine("Saved. The next cycle applies it: excluded folders are left as they are on both sides; included ones merge without deletes.");
+                (folders, remoteError) = await SelectiveSync.ListAsync(pair, client, ct);
+            }
+
+            foreach (var f in folders)
+            {
+                var where = (f.OnLocal, f.OnRemote) switch
+                {
+                    (true, true) => "local + cloud",
+                    (true, false) => "local only",
+                    (false, true) => "cloud only",
+                    (true, null) => "local",
+                    _ => "missing",
+                };
+                Console.WriteLine($"  [{(f.Excluded ? " " : "x")}] {f.Name,-40} {where}");
+            }
+
+            if (remoteError is not null)
+            {
+                Console.WriteLine($"Cloud folders unknown: {remoteError}");
+            }
+
+            return 0;
+        }));
+        return command;
+    }
+
+    private static string TopKey(string name) => PathKey.FromPath(name.Replace('\\', '/').Trim('/'));
+
     public static Command Secret(Option<string?> dataDir)
     {
         var setPair = new Argument<string>("pair") { Description = "Pair name or id." };

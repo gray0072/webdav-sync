@@ -20,7 +20,7 @@ public static class PairSettingsEditor
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> Elsewhere = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["excludedFolders"] = "cannot be changed here yet: excluding and re-including need base handling (§12.2)",
+        ["excludedFolders"] = "is changed with 'wds folders <pair> --exclude|--include' or the tray's 'Choose folders…'",
         ["excludePatterns"] = "cannot be changed here yet: excluding and re-including need base handling (§12.2)",
         ["autoApprove"] = "is changed with 'wds rule add|remove'",
     };
