@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/WebDavSync.Core/WebDavSync.Core.csproj" />
     <Project Path="src/WebDavSync.Cli/WebDavSync.Cli.csproj" />
+    <Project Path="src/WebDavSync.App/WebDavSync.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WebDavSync.Core.Tests/WebDavSync.Core.Tests.csproj" />

@@ -18,7 +18,7 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
   (scanner, FileId, trash), `Remote/` (WebDAV client, crawler, probe), `Planning/` (pure planner, guards,
   approval), `Execution/` (executor), `State/` (SQLite state DB), `Legacy/` (`.cloud.db` importer),
   `Engine/` (cycle orchestration, pair setup), `Config/` (settings, markers, filters).
-- `src/WebDavSync.App/` — WinForms tray app (`net10.0-windows`); not created yet.
+- `src/WebDavSync.App/` — WinForms tray app `WebDavSync.exe` (`net10.0-windows`, §14.1) on top of `PairService` (Core).
 - `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `held`, `rule`,
   `secret`, `status`.
 - `tests/WebDavSync.Core.Tests/` — unit tests (planner decision table, moves, folders, guards, hash, names, importer,
@@ -39,6 +39,7 @@ dotnet test                                              # xUnit v3 on Microsoft
 dotnet test --project tests/WebDavSync.Core.Tests
 dotnet run --project src/WebDavSync.Cli -- plan <pair>   # password: wds secret set <pair>, or env WDS_PASSWORD
 dotnet run --project src/WebDavSync.Cli -- sync <pair> --once --dry-run
+src\WebDavSync.App\bin\Debug\net10.0-windows\WebDavSync.exe --data-dir <dir>   # tray app; real pairs only with the user's go-ahead
 .\scripts\smoke-real.ps1 -Url <webdav url> -User <login>  # disposable test pair only, see §19.9
 ```
 

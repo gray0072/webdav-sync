@@ -27,3 +27,19 @@ Windows:
 
 Notifications (Windows toasts): errors, new conflicts, approvals waiting, mass-delete guard triggered.
 Rate-limited (one per category per 10 min), never a toast per file.
+
+## 14.1 Implemented (first tray milestone, `src/WebDavSync.App`, executable `WebDavSync.exe`)
+
+- `WebDavSync.exe [--data-dir <path>]` (default `<app dir>\data` or `WDS_DATA_DIR`); exits with an error if the data
+  folder is not writable; one instance per data folder (named mutex). One `PairService` (§8) per pair of
+  `settings.json`; the password comes from `secrets.dat`, then `WDS_PASSWORD`.
+- Icon: all states of the table, drawn at startup; syncing alternates two frames; the most severe pair state wins
+  (Error > Needs attention > Offline > Syncing > Paused > Waiting > Idle). Tooltip: status text (+ last sync time).
+- Menu (per pair; a submenu per pair when there are several): status, Open folder, Open cloud in browser (Mail.ru),
+  Sync now, Pause ▸ (15 min, 1 h, until tomorrow 06:00, until resumed) / Resume, Approvals (N)…, Mode ▸, Set
+  password…; then Start with Windows (HKCU `Run`, with the data folder), Open log folder, Exit. Left click opens the
+  approvals of a pair that has some, otherwise the folder. Mode changes re-read `settings.json` before saving.
+- Approvals window: pending ops with checkboxes (red: deletes, overwrites, conflicts), Approve checked / Approve all
+  (with a confirmation that counts deletions; a guard trip lists the trips), Reject checked (hold), Check all.
+- Notifications: balloon tips for approvals waiting, failed ops and errors, one per pair and category per 10 min.
+- Not yet: Activity, Conflicts and Errors windows, Choose folders, Settings window, Windows toasts.

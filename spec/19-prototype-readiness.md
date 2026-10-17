@@ -82,8 +82,7 @@ Mail.ru because the remote hash is known ([§3.5](03-legacy-state.md)).
 
 ## 19.6 Not needed for the prototype
 
-Tray UI ([§14](14-tray-ui.md)), watcher and timing ([§8](08-timing.md)), bandwidth limits and pause
-([§11](11-bandwidth-pause.md)), selective sync on the fly ([§12.2](12-filters.md)), toasts, schedule,
+Bandwidth limits ([§11](11-bandwidth-pause.md)), selective sync on the fly ([§12.2](12-filters.md)), toasts, schedule,
 diagnostics export. Passwords: `secrets.dat` (`wds secret set`, §15.1) or the environment variable
 `WDS_PASSWORD`; never from command-line args or files in the repo.
 
@@ -189,4 +188,5 @@ Next, in order:
    - 5a ~~`secrets.dat`~~ — done 2026-10-17: DPAPI store, `wds secret set|remove` (§15.1).
    - 5b ~~Pair service~~ — done 2026-10-17: `PairService` (§8, §10): triggers, states of §14, pending approvals.
    - 5c ~~Local-change cycles without a full crawl~~ — done 2026-10-17: cached snapshot + re-list (§4.3 #3, §8).
-   - 5d WinForms tray app (`src/WebDavSync.App`): icon states, menu, approvals window, notifications.
+   - 5d ~~WinForms tray app~~ — done 2026-10-17: `src/WebDavSync.App` (§14.1). Next: run it on `D:\Cloud` in
+     `ApproveAll` (user's go-ahead), then Activity / Conflicts / Errors / Settings windows (§14).
