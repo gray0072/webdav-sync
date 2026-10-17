@@ -20,9 +20,10 @@ else; framework-dependent (.NET 10 Desktop Runtime), win-x64.
     settings.json      app settings + list of pairs (pair id, local root, remote URL, login, mode, limits, ...)
     logs\              rolling log files
     probe-*.json       probe reports (§4.2)
-  diagnostics\         exported diagnostics bundles
-  app.lock             single-instance lock (in addition to the named mutex)
+    diagnostics\       exported diagnostics bundles (later)
 ```
+
+Single instance: a named mutex per data folder (no lock file).
 
 - The app dir must be writable (portable install, not `Program Files`). If it is not
   writable → clear error at startup and exit; no silent fallback to `%APPDATA%`.
