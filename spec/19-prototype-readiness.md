@@ -40,7 +40,7 @@ Acceptance:
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 199 unit + 6 integration, all green (`dotnet test`).
+- Tests: 202 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
 
@@ -65,7 +65,7 @@ Mail.ru because the remote hash is known ([§3.5](03-legacy-state.md)).
 | SQLite | `Microsoft.Data.Sqlite`, WAL, raw SQL (no ORM). |
 | Key normalization | `Key = NFC(path).ToLowerInvariant()`, `/` separator, no leading slash. Matches legacy `key`. |
 | Hash | Streaming content hash ([§3.3](03-legacy-state.md)) as `ContentHash` value type (40 uppercase hex). |
-| Execution | Sequential (one op at a time), global request rate limit; no parallel transfers yet. |
+| Execution | Sequential (one op at a time), global request rate limit; no parallel transfers yet. Remote crawl: `maxParallelRequests` listings in flight (§4.3). |
 | Tray (later) | WinForms `NotifyIcon`. `src/WebDavSync.App` is not created yet. |
 
 ## 19.5 Spec gaps (closed)
@@ -182,5 +182,7 @@ Next, in order:
    `wds held`, `wds rule`. Not done: an "approve and remember" answer at the prompt (rules are added with `wds rule add`).
 3. ~~Large files~~ — done 2026-10-17: `Range` resume of downloads, a dropped or stalled `GET` body is retried
    (§6.6, §4.5); journal re-validation is covered by re-planning with the remote hash (§6.7).
-4. Crawl time (~7 min per cycle, Mail.ru has no folder etags): parallel PROPFINDs within the request limit.
+4. ~~Crawl time~~ — done 2026-10-17: parallel PROPFINDs (`maxParallelRequests = 4`) within the request limit
+   (§4.3). Expected on `D:\Cloud`: bound by `maxRequestsPerSecond = 5` → ~3 min instead of ~7; to be measured on the
+   next real cycle. If Mail.ru tolerates it, `wds pair set cloud maxRequestsPerSecond=10` halves that.
 5. Tray app milestone (§14): watcher, scheduler, `secrets.dat` (DPAPI) instead of `WDS_PASSWORD`.

@@ -12,7 +12,7 @@ public sealed class PairSettingsEditorTests
         [
             "mode=approveall", "MaxOpsPerCycle=20", "conflictWinner=Newer", "massDeletePercent=2.5",
             "minFreeDiskSpace=4GB", "maxCompareDownloadBytes=512 KB", "keepOverwrittenVersions=off",
-            "localDeleteTarget=StateTrash", "remoteHashProperty={DAV:}getetag", "maxRequestsPerSecond=0",
+            "localDeleteTarget=StateTrash", "remoteHashProperty={DAV:}getetag", "maxRequestsPerSecond=0", "maxParallelRequests=8",
         ]);
 
         Assert.Equal(SyncMode.ApproveAll, pair.Mode);
@@ -25,6 +25,7 @@ public sealed class PairSettingsEditorTests
         Assert.Equal(LocalDeleteTarget.StateTrash, pair.LocalDeleteTarget);
         Assert.Equal("{DAV:}getetag", pair.RemoteHashProperty);
         Assert.Equal(0, pair.MaxRequestsPerSecond);
+        Assert.Equal(8, pair.MaxParallelRequests);
     }
 
     [Fact]
@@ -49,6 +50,7 @@ public sealed class PairSettingsEditorTests
     [InlineData("mode=1")]
     [InlineData("maxOpsPerCycle=0")]
     [InlineData("massDeleteCount=-1")]
+    [InlineData("maxParallelRequests=0")]
     [InlineData("massDeletePercent=150")]
     [InlineData("minFreeDiskSpace=lots")]
     [InlineData("keepOverwrittenVersions=maybe")]

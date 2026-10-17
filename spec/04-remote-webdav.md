@@ -62,7 +62,10 @@ WebDAV has no change feed. Strategy, in order of preference (chosen by probe):
 2. **Full crawl**: `Depth: 1` breadth-first over all folders, throttled by the request limiter.
    ~900 folders → ~900 requests; at the default 5 req/s that is ~3 minutes, so the full crawl
    is not the "fast path" — it runs on a longer interval (default 15 min) and on demand.
-   (Prototype: always a full crawl.)
+   (Prototype: always a full crawl.) Up to `maxParallelRequests` listings (default 4) are in flight at once, still
+   within `maxRequestsPerSecond`; sequential listings were bound by latency (Mail.ru: ~0.5 s each, ~7 min for 843
+   folders). Results are processed one at a time, so the snapshot does not depend on arrival order; a listing error
+   that stops the cycle cancels the outstanding ones.
 3. Targeted re-list of folders touched by our own operations or by the last local changes.
 
 Remote identity of a file version: `etag` if present on both the item and the base, otherwise `(size, mtime)`.

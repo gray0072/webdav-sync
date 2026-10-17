@@ -41,6 +41,7 @@ public static class PairSettingsEditor
         ["importedBaseMatch"] = (p, v) => p.ImportedBaseMatch = ParseEnum<ImportedBaseMatch>(v),
         ["remoteHashProperty"] = (p, v) => p.RemoteHashProperty = IsNone(v) ? null : ParseHashProperty(v),
         ["maxRequestsPerSecond"] = (p, v) => p.MaxRequestsPerSecond = ParseDouble(v, min: 0, max: 1000),
+        ["maxParallelRequests"] = (p, v) => p.MaxParallelRequests = (int)ParseLong(v, min: 1, max: 16),
         ["setLocalMtimeFromRemote"] = (p, v) => p.SetLocalMtimeFromRemote = ParseBool(v),
     };
 

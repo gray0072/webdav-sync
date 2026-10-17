@@ -104,6 +104,7 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 | `importedBaseMatch` | `SizeOnly` \| `SizeAndMtime` | `SizeOnly` | [§3.5](03-legacy-state.md). |
 | `remoteHashProperty` | string? (Clark notation) | from the newest probe report | PROPFIND property holding the content hash ([§4.2](04-remote-webdav.md)); Mail.ru: `{DAV:}getetag`; absent = unknown. CLI: `pair add --remote-hash-property <name\|auto\|none>`. |
 | `maxRequestsPerSecond` | double | 5 | [§11](11-bandwidth-pause.md); 0 = unlimited. |
+| `maxParallelRequests` | int | 4 | Listings in flight during a remote crawl ([§4.3](04-remote-webdav.md)); 1–16. |
 | `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
 | `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)). |
 | `excludePatterns` | string[] | `[]` | Globs (`*`, `?`); without `/` matched against the name, otherwise against the path ([§12.3](12-filters.md)). |
@@ -112,7 +113,7 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 Settings of later milestones (not implemented yet; names reserved): timing ([§8](08-timing.md): `localQuietPeriod`,
 `maxBatchDelay`, `fileStableFor`, `remotePollInterval`, `remoteFullCrawlInterval`, `localFullRescanInterval`,
 `idleBackoff`), bandwidth and concurrency ([§11](11-bandwidth-pause.md): `uploadLimitKBps`, `downloadLimitKBps`,
-`maxParallelTransfers`, `maxParallelRequests`, schedule), selective sync policy ([§12.2](12-filters.md):
+`maxParallelTransfers`, schedule), selective sync policy ([§12.2](12-filters.md):
 `syncRootFiles`, `newRemoteRootFolders`), `maxFileSize` ([§12.3](12-filters.md)).
 
 CLI: `wds pair show <pair>` prints all settings; `wds pair set <pair> name=value ...` changes them, all or nothing

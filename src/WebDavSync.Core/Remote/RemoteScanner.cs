@@ -7,8 +7,10 @@ namespace WebDavSync.Core.Remote;
 /// <summary>
 /// Full breadth-first <c>Depth: 1</c> crawl (§4.3). A folder is added to
 /// <see cref="Snapshot{TEntry}.ListedFolders"/> only when its listing is complete (§6.8).
+/// Up to <paramref name="parallel"/> listings are in flight (within the client's request rate limit); results are
+/// processed one at a time, so the snapshot does not depend on the order in which listings arrive.
 /// </summary>
-public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger logger)
+public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger logger, int parallel = 1)
 {
     /// <param name="remoteRoot">Absolute remote root of the pair.</param>
     /// <param name="subtree">Relative folder to start from (<c>""</c> = whole pair).</param>
@@ -21,31 +23,78 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
         var queue = new Queue<string>();
         queue.Enqueue(subtree);
         var requests = 0;
-
-        while (queue.Count > 0)
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var running = new Dictionary<Task<RemoteListing>, string>();
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var relDir = queue.Dequeue();
-            RemoteListing listing;
+            while (queue.Count > 0 || running.Count > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                while (queue.Count > 0 && running.Count < Math.Max(1, parallel))
+                {
+                    var dir = queue.Dequeue();
+                    running[ListAsync(dir)] = dir;
+                }
+
+                var task = await Task.WhenAny(running.Keys).ConfigureAwait(false);
+                var relDir = running[task];
+                running.Remove(task);
+                if (Process(task, relDir) is { } listing)
+                {
+                    progress?.Report(++requests);
+                    AddListing(relDir, listing);
+                }
+            }
+        }
+        finally
+        {
+            if (running.Count > 0)
+            {
+                await cts.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await Task.WhenAll(running.Keys).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is RemoteException or OperationCanceledException)
+                {
+                    // The crawl already failed; outstanding listings are abandoned.
+                }
+            }
+        }
+
+        logger.LogInformation(
+            "Remote crawl of {Root}/{Subtree}: {Entries} entries, {Listed} folders listed, {Requests} requests, {Warnings} warnings",
+            remoteRoot, subtree, entries.Count, listed.Count, requests, warnings.Count);
+        return new RemoteSnapshot(entries, listed, skipped, warnings);
+
+        // Async wrapper: a store that throws synchronously still yields a faulted task.
+        async Task<RemoteListing> ListAsync(string relDir) =>
+            await store.ListAsync(PathKey.ToRemoteFull(remoteRoot, relDir), cts.Token).ConfigureAwait(false);
+
+        RemoteListing? Process(Task<RemoteListing> task, string relDir)
+        {
             try
             {
-                listing = await store.ListAsync(PathKey.ToRemoteFull(remoteRoot, relDir), ct).ConfigureAwait(false);
+                return task.GetAwaiter().GetResult();
             }
             catch (RemoteException ex) when (ex.Kind == RemoteErrorKind.NotFound && relDir != subtree)
             {
                 // Vanished mid-crawl: the parent listing is stale, so it can no longer prove deletions.
                 listed.Remove(PathKey.FromPath(PathKey.Parent(relDir)));
                 warnings.Add($"Remote folder '{relDir}' disappeared during the crawl.");
-                continue;
+                return null;
             }
             catch (RemoteException ex) when (!ex.StopsCycle && ex.Kind != RemoteErrorKind.NotFound)
             {
                 warnings.Add($"Cannot list remote folder '{relDir}': {ex.Message}");
                 logger.LogWarning(ex, "Cannot list remote folder {Folder}", relDir);
-                continue;
+                return null;
             }
+        }
 
-            progress?.Report(++requests);
+        void AddListing(string relDir, RemoteListing listing)
+        {
+
             if (listing.Complete)
             {
                 listed.Add(PathKey.FromPath(relDir));
@@ -91,10 +140,5 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
                 }
             }
         }
-
-        logger.LogInformation(
-            "Remote crawl of {Root}/{Subtree}: {Entries} entries, {Listed} folders listed, {Requests} requests, {Warnings} warnings",
-            remoteRoot, subtree, entries.Count, listed.Count, requests, warnings.Count);
-        return new RemoteSnapshot(entries, listed, skipped, warnings);
     }
 }

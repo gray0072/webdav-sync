@@ -78,6 +78,9 @@ public sealed class PairSettings
 
     public double MaxRequestsPerSecond { get; set; } = 5;
 
+    /// <summary>Listings in flight during a remote crawl (§4.3, §11), within <see cref="MaxRequestsPerSecond"/>.</summary>
+    public int MaxParallelRequests { get; set; } = 4;
+
     public bool SetLocalMtimeFromRemote { get; set; } = true;
 
     /// <summary>Excluded folders, relative paths (any depth); top-level ones form the selective sync (§12.2).</summary>

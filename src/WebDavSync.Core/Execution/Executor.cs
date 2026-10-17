@@ -611,7 +611,7 @@ public sealed class Executor(ExecutorContext ctx)
             return [];
         }
 
-        var crawl = await new RemoteScanner(ctx.Remote, ctx.Filter, ctx.Logger).CrawlAsync(ctx.RemoteRoot, op.NewRemotePath!, null, ct).ConfigureAwait(false);
+        var crawl = await new RemoteScanner(ctx.Remote, ctx.Filter, ctx.Logger, ctx.Settings.MaxParallelRequests).CrawlAsync(ctx.RemoteRoot, op.NewRemotePath!, null, ct).ConfigureAwait(false);
         var result = new List<BaseMutation>();
         foreach (var e in subtree.Where(e => !e.IsDir))
         {
@@ -702,7 +702,7 @@ public sealed class Executor(ExecutorContext ctx)
     /// <summary>DELETE of a collection is recursive: re-crawl it and require every file to be unchanged vs base.</summary>
     private async Task VerifyRemoteSubtreeUnchangedAsync(string relativeDir, CancellationToken ct)
     {
-        var snapshot = await new RemoteScanner(ctx.Remote, ctx.Filter, ctx.Logger).CrawlAsync(ctx.RemoteRoot, relativeDir, null, ct).ConfigureAwait(false);
+        var snapshot = await new RemoteScanner(ctx.Remote, ctx.Filter, ctx.Logger, ctx.Settings.MaxParallelRequests).CrawlAsync(ctx.RemoteRoot, relativeDir, null, ct).ConfigureAwait(false);
         if (!snapshot.ListedFolders.Contains(PathKey.FromPath(relativeDir)) ||
             snapshot.Entries.Values.Any(e => e.IsDir && !snapshot.ListedFolders.Contains(e.Key)) ||
             snapshot.SkippedKeys.Count > 0)

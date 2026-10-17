@@ -151,12 +151,89 @@ public sealed class RemoteScannerTests
         Assert.False(snapshot.IsComplete);
     }
 
-    [Fact]
-    public async Task Auth_failure_aborts_the_crawl()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(4)]
+    public async Task Auth_failure_aborts_the_crawl(int parallel)
     {
         var store = new InMemoryRemoteStore();
         store.AddDir("/root/a");
+        store.AddDir("/root/b/c");
         store.ListFault = path => path.EndsWith("/a", StringComparison.Ordinal) ? new RemoteException(RemoteErrorKind.Auth, "401") : null;
-        await Assert.ThrowsAsync<RemoteException>(() => new RemoteScanner(store, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", ct: TestContext.Current.CancellationToken));
+        var slow = new SlowStore(store);
+        await Assert.ThrowsAsync<RemoteException>(() => new RemoteScanner(slow, SyncFilter.Empty, NullLogger.Instance, parallel).CrawlAsync("/root", ct: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Parallel_crawl_overlaps_listings_and_matches_the_sequential_snapshot()
+    {
+        var store = new InMemoryRemoteStore();
+        for (var i = 0; i < 6; i++)
+        {
+            for (var j = 0; j < 3; j++)
+            {
+                store.AddFile($"/root/d{i}/s{j}/f.txt", $"{i}{j}");
+            }
+        }
+
+        store.AddFile("/root/d2/broken/x.txt", "x");
+        store.ListFault = path => path.EndsWith("/broken", StringComparison.Ordinal) ? new RemoteException(RemoteErrorKind.Transient, "boom") : null;
+        var ct = TestContext.Current.CancellationToken;
+
+        var sequential = await new RemoteScanner(store, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", ct: ct);
+        var slow = new SlowStore(store);
+        var parallel = await new RemoteScanner(slow, SyncFilter.Empty, NullLogger.Instance, parallel: 4).CrawlAsync("/root", ct: ct);
+
+        Assert.Equal(sequential.Entries.Keys.Order(StringComparer.Ordinal), parallel.Entries.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(sequential.ListedFolders.Order(StringComparer.Ordinal), parallel.ListedFolders.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain("d2/broken", parallel.ListedFolders);
+        Assert.InRange(slow.MaxInFlight, 2, 4);
+    }
+
+    /// <summary>Adds latency to listings and records how many were in flight at once.</summary>
+    private sealed class SlowStore(InMemoryRemoteStore inner) : IRemoteStore
+    {
+        private readonly Lock _lock = new();
+        private int _inFlight;
+
+        public int MaxInFlight { get; private set; }
+
+        public async Task<RemoteListing> ListAsync(string path, CancellationToken ct)
+        {
+            lock (_lock)
+            {
+                MaxInFlight = Math.Max(MaxInFlight, ++_inFlight);
+            }
+
+            try
+            {
+                await Task.Delay(20, ct);
+                lock (_lock)
+                {
+                    return inner.ListAsync(path, ct).GetAwaiter().GetResult();
+                }
+            }
+            finally
+            {
+                lock (_lock)
+                {
+                    _inFlight--;
+                }
+            }
+        }
+
+        public Task<RemoteItem?> StatAsync(string path, CancellationToken ct) => inner.StatAsync(path, ct);
+
+        public Task<RemoteDownload> GetAsync(string path, long offset, CancellationToken ct) => inner.GetAsync(path, offset, ct);
+
+        public Task PutAsync(string path, Stream content, long length, DateTime? mtimeUtc, CancellationToken ct) => inner.PutAsync(path, content, length, mtimeUtc, ct);
+
+        public Task MkdirAsync(string path, CancellationToken ct) => inner.MkdirAsync(path, ct);
+
+        public Task MoveAsync(string from, string to, bool overwrite, CancellationToken ct) => inner.MoveAsync(from, to, overwrite, ct);
+
+        public Task DeleteAsync(string path, CancellationToken ct) => inner.DeleteAsync(path, ct);
+
+        public Task<RemoteQuota?> GetQuotaAsync(CancellationToken ct) => inner.GetQuotaAsync(ct);
     }
 }

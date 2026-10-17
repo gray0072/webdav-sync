@@ -188,7 +188,7 @@ public sealed class SyncEngine : IDisposable
         else
         {
             status?.Report("Crawling remote...");
-            remote = await new RemoteScanner(Remote, filter, _logger)
+            remote = await new RemoteScanner(Remote, filter, _logger, Pair.MaxParallelRequests)
                 .CrawlAsync(remoteRoot, string.Empty, new Progress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
                 .ConfigureAwait(false);
         }
