@@ -290,7 +290,7 @@ internal static class Commands
                 new Dictionary<string, BaseEntry>(),
                 parse.GetValue(hash),
                 null,
-                new Progress<ScanProgress>(p => progress.Report($"{p.Files} files, {p.Folders} folders, hashed {SafetyGuards.Size(p.HashedBytes)}")),
+                new InlineProgress<ScanProgress>(p => progress.Report($"{p.Files} files, {p.Folders} folders, hashed {SafetyGuards.Size(p.HashedBytes)}")),
                 ct);
             progress.Done();
             var files = snapshot.Entries.Values.Where(e => !e.IsDir).ToList();
@@ -454,7 +454,7 @@ internal static class Commands
 
             var selected = Approval.Select(cycle.Plan, approved, parse.GetValue(maxOps) ?? pair.MaxOpsPerCycle);
             Console.WriteLine($"Executing {selected.Count(o => !o.IsBaseOnly)} ops ({selected.Count(o => o.IsBaseOnly)} base updates)...");
-            var result = await engine.ExecuteAsync(cycle, selected, new Progress<Core.Execution.OpResult>(r =>
+            var result = await engine.ExecuteAsync(cycle, selected, new InlineProgress<Core.Execution.OpResult>(r =>
             {
                 if (!r.Op.IsBaseOnly || r.Status != JournalStatus.Done)
                 {

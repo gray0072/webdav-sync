@@ -29,8 +29,14 @@ Additional debug controls:
   (§7.6): a held item has no base entry or keeps its old one, so it is never deleted because of being held.
 - "Approve and remember" rules (`autoApprove`, [§15.5](15-config-storage.md)): op type + folder (whole subtree,
   empty = the whole pair) + `overwrite` (also uploads/downloads that replace an item; off by default). A matching op
-  needs no approval in any mode; moves must stay inside the folder. Rules never bypass guard trips (§9) or the
+  needs no approval in any mode; moves must stay inside the folder; a `Download` rule also covers `MkdirLocal` and an
+  `Upload` rule `MkdirRemote` in its folder (the folders the transfers need). Rules never bypass guard trips (§9) or the
   union-mode approval (§7.2), e.g. always auto-approve downloads into `Camera Uploads`.
+- Background service (tray, §8): each cycle executes the ops that need no approval right away and keeps the rest as
+  the pending approval (replaced by the next cycle). Approving executes the chosen ops of that plan (preconditions are
+  re-checked per op, like the CLI prompt); a pending plan older than 30 min is re-planned instead. A guard trip puts
+  every action op into the pending approval and needs an explicit confirmation. Rejecting puts the ops into the held
+  list. `DryRun` executes nothing; the plan is shown as pending.
 - Every executed op is listed in the Activity log with an "Open"/"Show in folder" action.
 - CLI: `wds plan <pair> [--full]` prints the plan; `wds sync <pair> --once [--dry-run] [--max-ops N]
   [--mode M] [--yes] [--accept-guards] [--full]`; both take `--keep-local <path>` / `--keep-remote <path>`

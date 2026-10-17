@@ -89,6 +89,15 @@ public sealed class PairSettings
     /// <summary>User glob patterns (§12.3). Without <c>/</c> matched against the name, otherwise against the path.</summary>
     public List<string> ExcludePatterns { get; set; } = [];
 
+    /// <summary>Wait this long after the last local change of a burst before a cycle (§8).</summary>
+    public TimeSpan LocalQuietPeriod { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Run a cycle at most this long after the first local change of a burst, even if changes continue (§8).</summary>
+    public TimeSpan MaxBatchDelay { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Interval of cycles without local changes, to pick up remote changes (§8; a full crawl for now, §4.3).</summary>
+    public TimeSpan RemotePollInterval { get; set; } = TimeSpan.FromMinutes(15);
+
     /// <summary>"Approve and remember" rules (§10): matching ops run without asking in every mode except union mode.</summary>
     public List<AutoApproveRule> AutoApprove { get; set; } = [];
 
@@ -111,7 +120,11 @@ public sealed class AutoApproveRule
 
     public bool Matches(SyncOp op)
     {
-        if (op.Type != Type || op.IsBaseOnly || (op.Overwrite && !Overwrite))
+        // A download/upload rule also creates the folders it needs on the target side.
+        var typeMatches = op.Type == Type ||
+                          (Type == OpType.Download && op.Type == OpType.MkdirLocal) ||
+                          (Type == OpType.Upload && op.Type == OpType.MkdirRemote);
+        if (!typeMatches || op.IsBaseOnly || (op.Overwrite && !Overwrite))
         {
             return false;
         }

@@ -40,7 +40,7 @@ Acceptance:
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 202 unit + 6 integration, all green (`dotnet test`).
+- Tests: 213 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
 
@@ -187,7 +187,6 @@ Next, in order:
    next real cycle. If Mail.ru tolerates it, `wds pair set cloud maxRequestsPerSecond=10` halves that.
 5. Tray app milestone (§14), in steps:
    - 5a ~~`secrets.dat`~~ — done 2026-10-17: DPAPI store, `wds secret set|remove` (§15.1).
-   - 5b Pair service in Core: triggers (watcher with quiet period / max batch delay, remote poll, sync now, pause),
-     states of §14, approval of pending plans (approve selected → execute, reject → held).
+   - 5b ~~Pair service~~ — done 2026-10-17: `PairService` (§8, §10): triggers, states of §14, pending approvals.
    - 5c Local-change cycles without a full crawl: cached remote snapshot + re-list of touched folders (§4.3 #3).
    - 5d WinForms tray app (`src/WebDavSync.App`): icon states, menu, approvals window, notifications.

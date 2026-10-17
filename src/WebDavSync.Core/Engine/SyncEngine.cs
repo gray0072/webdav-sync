@@ -189,7 +189,7 @@ public sealed class SyncEngine : IDisposable
         {
             status?.Report("Crawling remote...");
             remote = await new RemoteScanner(Remote, filter, _logger, Pair.MaxParallelRequests)
-                .CrawlAsync(remoteRoot, string.Empty, new Progress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
+                .CrawlAsync(remoteRoot, string.Empty, new InlineProgress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
                 .ConfigureAwait(false);
         }
 
@@ -199,7 +199,7 @@ public sealed class SyncEngine : IDisposable
             baseEntries,
             LocalHashMode.Needed,
             key => remote.Entries.TryGetValue(key, out var r) && !r.IsDir,
-            new Progress<ScanProgress>(p => status?.Report($"Scanning local: {p.Files} files, {p.Folders} folders, hashed {SafetyGuards.Size(p.HashedBytes)}")),
+            new InlineProgress<ScanProgress>(p => status?.Report($"Scanning local: {p.Files} files, {p.Folders} folders, hashed {SafetyGuards.Size(p.HashedBytes)}")),
             ct).ConfigureAwait(false);
 
         var trustFileIds = true;

@@ -42,6 +42,9 @@ public static class PairSettingsEditor
         ["remoteHashProperty"] = (p, v) => p.RemoteHashProperty = IsNone(v) ? null : ParseHashProperty(v),
         ["maxRequestsPerSecond"] = (p, v) => p.MaxRequestsPerSecond = ParseDouble(v, min: 0, max: 1000),
         ["maxParallelRequests"] = (p, v) => p.MaxParallelRequests = (int)ParseLong(v, min: 1, max: 16),
+        ["localQuietPeriod"] = (p, v) => p.LocalQuietPeriod = ParseDuration(v, TimeSpan.Zero, TimeSpan.FromMinutes(10)),
+        ["maxBatchDelay"] = (p, v) => p.MaxBatchDelay = ParseDuration(v, TimeSpan.Zero, TimeSpan.FromHours(1)),
+        ["remotePollInterval"] = (p, v) => p.RemotePollInterval = ParseDuration(v, TimeSpan.FromMinutes(1), TimeSpan.FromDays(1)),
         ["setLocalMtimeFromRemote"] = (p, v) => p.SetLocalMtimeFromRemote = ParseBool(v),
     };
 
@@ -116,6 +119,33 @@ public static class PairSettingsEditor
         }
 
         return (long)Math.Round(number * unit);
+    }
+
+    /// <summary>Parses a duration: <c>90s</c>, <c>15m</c>, <c>2h</c>, <c>1d</c> or <c>hh:mm:ss</c>.</summary>
+    public static TimeSpan ParseDuration(string value, TimeSpan min, TimeSpan max)
+    {
+        var text = value.Trim().ToLowerInvariant();
+        TimeSpan? result = null;
+        if (text.Length > 1 && double.TryParse(text[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var n) && n >= 0)
+        {
+            result = text[^1] switch
+            {
+                's' => TimeSpan.FromSeconds(n),
+                'm' => TimeSpan.FromMinutes(n),
+                'h' => TimeSpan.FromHours(n),
+                'd' => TimeSpan.FromDays(n),
+                _ => null,
+            };
+        }
+
+        if (result is null && TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var parsed))
+        {
+            result = parsed;
+        }
+
+        return result is { } r && r >= min && r <= max
+            ? r
+            : throw new FormatException($"'{value}' is not a duration in {min}..{max}, e.g. 5s, 15m, 2h.");
     }
 
     private static (string Name, string Value) Split(string assignment)
