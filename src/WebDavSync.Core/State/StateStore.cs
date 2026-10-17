@@ -34,6 +34,7 @@ public static class MetaKeys
     public const string Capabilities = "capabilities";
     public const string LastCycle = "last_cycle";
     public const string RemoteMarkerCreated = "remote_marker_created";
+    public const string LastFullCrawl = "last_full_crawl";
 }
 
 /// <summary><c>state.db</c> (§15.3): SQLite in WAL mode, raw SQL.</summary>
@@ -142,6 +143,15 @@ public sealed class StateStore : IDisposable
     {
         using var cmd = Command("INSERT INTO meta(key, value) VALUES($k, $v) ON CONFLICT(key) DO UPDATE SET value = excluded.value", ("$k", key), ("$v", value));
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>When the last complete full remote crawl finished (§8 start-up trust).</summary>
+    public DateTime? LastFullCrawlUtc
+    {
+        get => long.TryParse(GetMeta(MetaKeys.LastFullCrawl), NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks)
+            ? new DateTime(ticks, DateTimeKind.Utc)
+            : null;
+        set => SetMeta(MetaKeys.LastFullCrawl, value?.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
     }
 
     public bool InitialSyncDone

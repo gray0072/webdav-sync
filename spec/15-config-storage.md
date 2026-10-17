@@ -71,7 +71,7 @@ meta(key PK, value)
 - `local_path` / `remote_path`: real names per side (case and Unicode normalization may differ, §6.9).
 - `remote_confirmed = 0` for entries imported from `.cloud.db` until the first crawl adopts them ([§3.5](03-legacy-state.md)).
 - Journal status: `Running`, `Done`, `Failed`, `Skipped`, `Interrupted` ([§6.7](06-sync-algorithm.md)).
-- `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `legacy_import`
+- `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `last_full_crawl` (UTC ticks), `legacy_import`
   (import stats, JSON), `last_cycle` (summary, JSON), `capabilities` (reserved for probe results).
 - `held`: the held list ([§10](10-modes-approval.md)); `type` is the op type, `path` its display path, `state` the
   item's state on both sides when it was held. Schema 2; opening a schema-1 DB drops its unused `held` table.

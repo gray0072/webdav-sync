@@ -48,8 +48,14 @@ public sealed record PlanOptions
     /// </summary>
     public RemoteSnapshot? CachedRemote { get; init; }
 
-    /// <summary>Folder keys to re-list with <see cref="CachedRemote"/>.</summary>
+    /// <summary>Folder keys to re-list with <see cref="CachedRemote"/> or <see cref="RemoteFromBase"/>.</summary>
     public IReadOnlyCollection<string> RefreshFolders { get; init; } = [];
+
+    /// <summary>
+    /// Start-up trust (§8): the remote side as recorded in the base (paths, sizes, etags, hashes of everything synced)
+    /// stands in for a crawl; only <see cref="RefreshFolders"/> are re-listed. For a recent last full crawl only.
+    /// </summary>
+    public bool RemoteFromBase { get; init; }
 }
 
 /// <summary>
@@ -202,7 +208,8 @@ public sealed class SyncEngine : IDisposable
         {
             var scanner = new RemoteScanner(Remote, filter, _logger, Pair.MaxParallelRequests);
             RemoteSnapshot? refreshed = null;
-            if (options.CachedRemote is { } cached)
+            var cachedRemote = options.CachedRemote ?? (options.RemoteFromBase ? RemoteFromBase(baseEntries) : null);
+            if (cachedRemote is { } cached)
             {
                 status?.Report($"Checking {options.RefreshFolders.Count} remote folders...");
                 refreshed = await scanner.RefreshAsync(cached, remoteRoot, options.RefreshFolders, ct).ConfigureAwait(false);
@@ -212,7 +219,9 @@ public sealed class SyncEngine : IDisposable
             {
                 remote = refreshed;
                 remoteFromCache = true;
-                notes.Add($"Remote: cached snapshot, {options.RefreshFolders.Count} folders re-listed.");
+                notes.Add(options.CachedRemote is null
+                    ? $"Remote: as recorded in the base (last full crawl is recent), {options.RefreshFolders.Count} folders re-listed."
+                    : $"Remote: cached snapshot, {options.RefreshFolders.Count} folders re-listed.");
             }
             else
             {
@@ -220,6 +229,10 @@ public sealed class SyncEngine : IDisposable
                 remote = await scanner
                     .CrawlAsync(remoteRoot, string.Empty, new InlineProgress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
                     .ConfigureAwait(false);
+                if (remote.IsComplete)
+                {
+                    Store.LastFullCrawlUtc = DateTime.UtcNow;
+                }
             }
         }
 
@@ -259,7 +272,7 @@ public sealed class SyncEngine : IDisposable
             Filter = filter,
             KeepSide = options.KeepSide,
         }));
-        (plan, var held) = ApplyHeldList(plan, options.Hold, local, remote, notes);
+        (plan, var held) = ApplyHeldList(plan, options.Hold, local, remote, !remoteFromCache, notes);
 
         RemoteQuota? quota = null;
         try
@@ -301,7 +314,26 @@ public sealed class SyncEngine : IDisposable
         return items;
     }
 
-    private (Plan Plan, IReadOnlyList<SyncOp> Held) ApplyHeldList(Plan plan, IReadOnlyCollection<string> hold, LocalSnapshot local, RemoteSnapshot remote, List<string> notes)
+    /// <summary>The base's remote side as a snapshot: every base item, every base folder counted as listed.</summary>
+    public static RemoteSnapshot RemoteFromBase(IReadOnlyDictionary<string, BaseEntry> baseEntries)
+    {
+        var entries = new Dictionary<string, RemoteEntry>(StringComparer.Ordinal);
+        var listed = new HashSet<string>(StringComparer.Ordinal) { string.Empty };
+        foreach (var b in baseEntries.Values.Where(b => b.Key.Length > 0))
+        {
+            entries[b.Key] = new RemoteEntry(b.Key, b.RemotePath, b.IsDir, b.IsDir ? 0 : b.RemoteSize, b.RemoteMtimeUtc, b.RemoteETag, b.RemoteHash);
+            if (b.IsDir)
+            {
+                listed.Add(b.Key);
+            }
+        }
+
+        return new RemoteSnapshot(entries, listed);
+    }
+
+    /// <param name="fullCrawl">Held items are released only against a full crawl: a cached or base-made snapshot can
+    /// miss remote-only items whose ops are held.</param>
+    private (Plan Plan, IReadOnlyList<SyncOp> Held) ApplyHeldList(Plan plan, IReadOnlyCollection<string> hold, LocalSnapshot local, RemoteSnapshot remote, bool fullCrawl, List<string> notes)
     {
         if (hold.Count > 0)
         {
@@ -327,7 +359,7 @@ public sealed class SyncEngine : IDisposable
         var result = HeldList.Apply(plan, Store.LoadHeld(), local, remote);
 
         // An op can be missing because a folder was not listed: release only on complete snapshots.
-        if (result.Released.Count > 0 && local.IsComplete && remote.IsComplete)
+        if (result.Released.Count > 0 && local.IsComplete && remote.IsComplete && fullCrawl)
         {
             Store.Release(result.Released);
             notes.Add($"{result.Released.Count} held items changed or no longer need an op; they are released.");

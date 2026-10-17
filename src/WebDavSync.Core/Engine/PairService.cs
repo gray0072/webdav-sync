@@ -72,6 +72,7 @@ public sealed class PairService : IAsyncDisposable
     private Task? _loop;
 
     private bool _syncNow;
+    private bool _startup;
     private bool _continue;
     private RemoteSnapshot? _cache;
     private DateTime? _lastFullCrawl;
@@ -143,6 +144,7 @@ public sealed class PairService : IAsyncDisposable
         lock (_lock)
         {
             _syncNow = true;
+            _startup = true;
         }
 
         _loop = Task.Run(() => LoopAsync(_stop.Token));
@@ -383,8 +385,11 @@ public sealed class PairService : IAsyncDisposable
     private async Task RunCycleAsync(string reason, bool incremental, CancellationToken stop)
     {
         PlanOptions options;
+        bool startup;
         lock (_lock)
         {
+            startup = _startup;
+            _startup = false;
             _syncNow = false;
             _continue = false;
             _firstChange = null;
@@ -401,6 +406,22 @@ public sealed class PairService : IAsyncDisposable
         try
         {
             using var engine = SyncEngine.Open(Pair, _remote, _logger);
+            if (startup && engine.Store.LastFullCrawlUtc is { } lastFull)
+            {
+                // Start-up trust (§8): after a recent full crawl the base stands in for the remote; the next full
+                // crawl is due one poll interval after the last one, as if the app had kept running.
+                lock (_lock)
+                {
+                    _lastFullCrawl = lastFull;
+                }
+
+                if (DateTime.UtcNow - lastFull < Pair.RemotePollInterval && engine.Store.InitialSyncDone)
+                {
+                    options = new PlanOptions { RemoteFromBase = true, RefreshFolders = [string.Empty] };
+                    _logger.LogInformation("Pair {Pair}: last full crawl {At:u} is recent; trusting the base", Pair.Name, lastFull);
+                }
+            }
+
             var cycle = await engine.PlanAsync(options, new InlineProgress<string>(text => SetStatus(PairState.Checking, text)), stop).ConfigureAwait(false);
             lock (_lock)
             {

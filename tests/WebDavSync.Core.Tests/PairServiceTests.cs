@@ -113,6 +113,50 @@ public sealed class PairServiceTests : IAsyncDisposable
         Assert.Equal("elsewhere", File.ReadAllText(_local.Full("F7/remote-only.txt")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restart_trusts_the_base_after_a_recent_full_crawl(bool crawlIsOld)
+    {
+        for (var i = 0; i < 5; i++)
+        {
+            _local.File($"F{i}/x.txt", $"x{i}");
+        }
+
+        var first = await StartInSyncAsync();
+        await first.DisposeAsync();
+        _service = null;
+        if (crawlIsOld)
+        {
+            using var store = StateStore.Open(new StatePaths(_local.Path).StateDb);
+            store.LastFullCrawlUtc = DateTime.UtcNow - _pair.RemotePollInterval - TimeSpan.FromMinutes(1);
+        }
+
+        _local.File("F2/while-closed.txt", "offline edit");
+        _remote.AddFile("/test/F4/remote-new.txt", "remote");
+        var lists = 0;
+        _remote.ListFault = _ =>
+        {
+            Interlocked.Increment(ref lists);
+            return null;
+        };
+
+        var service = Start();
+        await WaitAsync(service, s => s.State == PairState.Idle && s.LastSyncUtc is not null);
+
+        Assert.Equal("offline edit", _remote.Read("/test/F2/while-closed.txt"));
+        if (crawlIsOld)
+        {
+            Assert.True(Volatile.Read(ref lists) >= 6);
+            Assert.True(File.Exists(_local.Full("F4/remote-new.txt")));
+        }
+        else
+        {
+            Assert.InRange(Volatile.Read(ref lists), 1, 2);
+            Assert.False(File.Exists(_local.Full("F4/remote-new.txt")));
+        }
+    }
+
     [Fact]
     public async Task Watcher_picks_up_a_new_file_and_ignores_our_own_download()
     {

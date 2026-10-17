@@ -23,5 +23,12 @@ retry after 1, 2, 4 … 15 min; anything else → `Error`, retry at the poll int
 local changes (and the follow-up after a `maxOpsPerCycle` cut) re-list only the parents of the changed paths and the
 folders our own ops touched (§4.3 #3), as long as the cached snapshot is complete and the poll interval since the last
 full crawl has not passed. The poll is counted from the last full crawl, so steady local activity cannot postpone
-it. A watcher overflow or a failed cycle drops the cache. Not implemented yet: `fileStableFor`,
+it. A watcher overflow or a failed cycle drops the cache.
+
+Start-up trust: `state.db` `meta.last_full_crawl` records every complete full crawl (CLI or tray). If it is younger
+than `remotePollInterval` when the service starts (and the initial sync is done), the first cycle builds the remote
+snapshot from the base (each synced item's remote path, size, mtime, etag, hash; every base folder counts as listed)
+and re-lists only the root. Local changes made while the app was closed are found by the local scan; the next full
+crawl is due one poll interval after the recorded one. Held items are released only against a full crawl (a cached
+or base-made snapshot can miss the remote-only items whose ops are held). Not implemented yet: `fileStableFor`,
 `localFullRescanInterval`, `idleBackoff`.
