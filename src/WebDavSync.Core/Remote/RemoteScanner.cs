@@ -23,6 +23,7 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
         var queue = new Queue<string>();
         queue.Enqueue(subtree);
         var requests = 0;
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var running = new Dictionary<Task<RemoteListing>, string>();
         try
@@ -63,8 +64,8 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
         }
 
         logger.LogInformation(
-            "Remote crawl of {Root}/{Subtree}: {Entries} entries, {Listed} folders listed, {Requests} requests, {Warnings} warnings",
-            remoteRoot, subtree, entries.Count, listed.Count, requests, warnings.Count);
+            "Remote crawl of {Root}/{Subtree}: {Entries} entries, {Listed} folders listed, {Requests} requests, {Warnings} warnings in {Seconds:0.0} s ({Parallel} in parallel)",
+            remoteRoot, subtree, entries.Count, listed.Count, requests, warnings.Count, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds, parallel);
         return new RemoteSnapshot(entries, listed, skipped, warnings);
 
         // Async wrapper: a store that throws synchronously still yields a faulted task.

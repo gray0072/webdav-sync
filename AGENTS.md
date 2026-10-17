@@ -20,7 +20,7 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
   `Engine/` (cycle orchestration, pair setup), `Config/` (settings, markers, filters).
 - `src/WebDavSync.App/` — WinForms tray app (`net10.0-windows`); not created yet.
 - `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `held`, `rule`,
-  `status`.
+  `secret`, `status`.
 - `tests/WebDavSync.Core.Tests/` — unit tests (planner decision table, moves, folders, guards, hash, names, importer,
   executor scenarios on temp folders + in-memory remote). `tests/WebDavSync.IntegrationTests/` — against
   `rclone serve webdav` in Docker (skipped without Docker).
@@ -37,7 +37,7 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
 dotnet build
 dotnet test                                              # xUnit v3 on Microsoft.Testing.Platform
 dotnet test --project tests/WebDavSync.Core.Tests
-dotnet run --project src/WebDavSync.Cli -- plan <pair>   # password in env WDS_PASSWORD
+dotnet run --project src/WebDavSync.Cli -- plan <pair>   # password: wds secret set <pair>, or env WDS_PASSWORD
 dotnet run --project src/WebDavSync.Cli -- sync <pair> --once --dry-run
 .\scripts\smoke-real.ps1 -Url <webdav url> -User <login>  # disposable test pair only, see §19.9
 ```

@@ -20,6 +20,7 @@ root.Subcommands.Add(Commands.Plan(dataDir));
 root.Subcommands.Add(Commands.Sync(dataDir));
 root.Subcommands.Add(Commands.Held(dataDir));
 root.Subcommands.Add(Commands.Rule(dataDir));
+root.Subcommands.Add(Commands.Secret(dataDir));
 root.Subcommands.Add(Commands.Status(dataDir));
 
 return await root.Parse(args).InvokeAsync();

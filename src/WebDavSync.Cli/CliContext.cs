@@ -45,26 +45,34 @@ internal sealed class CliContext : IDisposable
     public PairSettings RequirePair(string idOrName) =>
         Settings.Find(idOrName) ?? throw new CliException($"Pair '{idOrName}' not found in {Paths.SettingsFile}. Use 'wds pair list'.");
 
-    /// <summary>The password comes only from the environment (§19.6): never from arguments or files in the repo.</summary>
-    public static string RequirePassword() =>
-        Environment.GetEnvironmentVariable(PasswordVariable) is { Length: > 0 } password
-            ? password
-            : throw new CliException($"Set the WebDAV app password in the {PasswordVariable} environment variable.");
+    public SecretStore Secrets => new(Paths.SecretsFile);
 
-    public WebDavClient CreateClient(string url, string user, double maxRequestsPerSecond = 5, string? hashProperty = null) =>
+    /// <summary>
+    /// The password never comes from arguments or files in the repo: <c>secrets.dat</c> for a pair (§15.1), otherwise
+    /// the environment variable (probe, scripts).
+    /// </summary>
+    public string RequirePassword(PairSettings? pair = null) =>
+        (pair is null ? null : Secrets.Get(pair.Id)) ??
+        (Environment.GetEnvironmentVariable(PasswordVariable) is { Length: > 0 } password
+            ? password
+            : throw new CliException(pair is null
+                ? $"Set the WebDAV app password in the {PasswordVariable} environment variable."
+                : $"No password for pair '{pair.Name}': run 'wds secret set {pair.Name}' (or set {PasswordVariable})."));
+
+    public WebDavClient CreateClient(string url, string user, double maxRequestsPerSecond = 5, string? hashProperty = null, string? password = null) =>
         new(
             new WebDavOptions
             {
                 Endpoint = new Uri(url),
                 User = user,
-                Password = RequirePassword(),
+                Password = password ?? RequirePassword(),
                 MaxRequestsPerSecond = maxRequestsPerSecond,
                 HashProperty = hashProperty is null ? null : XName.Get(hashProperty),
             },
             _factory.CreateLogger("webdav"));
 
     public WebDavClient CreateClient(PairSettings pair) =>
-        CreateClient(pair.RemoteUrl, pair.User, pair.MaxRequestsPerSecond, pair.RemoteHashProperty);
+        CreateClient(pair.RemoteUrl, pair.User, pair.MaxRequestsPerSecond, pair.RemoteHashProperty, RequirePassword(pair));
 
     /// <summary>The content hash property from the newest stored probe report for the endpoint's host, if any.</summary>
     public string? FindProbedHashProperty(string url)

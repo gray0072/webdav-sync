@@ -84,8 +84,8 @@ Mail.ru because the remote hash is known ([§3.5](03-legacy-state.md)).
 
 Tray UI ([§14](14-tray-ui.md)), watcher and timing ([§8](08-timing.md)), bandwidth limits and pause
 ([§11](11-bandwidth-pause.md)), selective sync on the fly ([§12.2](12-filters.md)), toasts, schedule,
-diagnostics export, `secrets.dat` (prototype reads the password from the environment variable
-`WDS_PASSWORD`; never from command-line args or files in the repo).
+diagnostics export. Passwords: `secrets.dat` (`wds secret set`, §15.1) or the environment variable
+`WDS_PASSWORD`; never from command-line args or files in the repo.
 
 ## 19.7 Findings during the prototype
 
@@ -185,4 +185,9 @@ Next, in order:
 4. ~~Crawl time~~ — done 2026-10-17: parallel PROPFINDs (`maxParallelRequests = 4`) within the request limit
    (§4.3). Expected on `D:\Cloud`: bound by `maxRequestsPerSecond = 5` → ~3 min instead of ~7; to be measured on the
    next real cycle. If Mail.ru tolerates it, `wds pair set cloud maxRequestsPerSecond=10` halves that.
-5. Tray app milestone (§14): watcher, scheduler, `secrets.dat` (DPAPI) instead of `WDS_PASSWORD`.
+5. Tray app milestone (§14), in steps:
+   - 5a ~~`secrets.dat`~~ — done 2026-10-17: DPAPI store, `wds secret set|remove` (§15.1).
+   - 5b Pair service in Core: triggers (watcher with quiet period / max batch delay, remote poll, sync now, pause),
+     states of §14, approval of pending plans (approve selected → execute, reject → held).
+   - 5c Local-change cycles without a full crawl: cached remote snapshot + re-list of touched folders (§4.3 #3).
+   - 5d WinForms tray app (`src/WebDavSync.App`): icon states, menu, approvals window, notifications.
