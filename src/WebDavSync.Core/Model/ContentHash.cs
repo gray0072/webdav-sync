@@ -47,7 +47,7 @@ public readonly record struct ContentHash
         return hasher.Finish();
     }
 
-    public static async Task<ContentHash> ComputeAsync(Stream stream, CancellationToken ct)
+    public static async Task<ContentHash> ComputeAsync(Stream stream, CancellationToken ct, ByteRateLimiter? limiter = null)
     {
         using var hasher = new ContentHasher();
         var buffer = new byte[81920];
@@ -55,15 +55,19 @@ public readonly record struct ContentHash
         while ((read = await stream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
         {
             hasher.Append(buffer.AsSpan(0, read));
+            if (limiter is not null)
+            {
+                await limiter.WaitAsync(read, ct).ConfigureAwait(false);
+            }
         }
 
         return hasher.Finish();
     }
 
-    public static async Task<ContentHash> ComputeFileAsync(string path, CancellationToken ct)
+    public static async Task<ContentHash> ComputeFileAsync(string path, CancellationToken ct, ByteRateLimiter? limiter = null)
     {
         await using var stream = OpenShared(path);
-        return await ComputeAsync(stream, ct).ConfigureAwait(false);
+        return await ComputeAsync(stream, ct, limiter).ConfigureAwait(false);
     }
 
     /// <summary>Opens a file for reading while allowing other writers (§6.6).</summary>

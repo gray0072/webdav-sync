@@ -45,6 +45,8 @@ public static class PairSettingsEditor
         ["localQuietPeriod"] = (p, v) => p.LocalQuietPeriod = ParseDuration(v, TimeSpan.Zero, TimeSpan.FromMinutes(10)),
         ["maxBatchDelay"] = (p, v) => p.MaxBatchDelay = ParseDuration(v, TimeSpan.Zero, TimeSpan.FromHours(1)),
         ["remotePollInterval"] = (p, v) => p.RemotePollInterval = ParseDuration(v, TimeSpan.FromMinutes(1), TimeSpan.FromDays(1)),
+        ["localVerifyInterval"] = (p, v) => p.LocalVerifyInterval = IsNone(v) ? null : ParseDuration(v, TimeSpan.FromDays(1), TimeSpan.FromDays(3650)),
+        ["hashLimitMBps"] = (p, v) => p.HashLimitMBps = ParseDouble(v, min: 0, max: 100_000),
         ["setLocalMtimeFromRemote"] = (p, v) => p.SetLocalMtimeFromRemote = ParseBool(v),
     };
 

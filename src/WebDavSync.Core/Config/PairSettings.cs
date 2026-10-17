@@ -98,6 +98,15 @@ public sealed class PairSettings
     /// <summary>Interval of cycles without local changes, to pick up remote changes (§8; a full crawl for now, §4.3).</summary>
     public TimeSpan RemotePollInterval { get; set; } = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// Rolling verify (§5.3): every synced local file is hashed again once per this interval, a slice per cycle, to
+    /// find content changes that kept size and mtime. <c>null</c>: off.
+    /// </summary>
+    public TimeSpan? LocalVerifyInterval { get; set; }
+
+    /// <summary>Read rate limit for hashing local files, MB/s (§11); 0 = unlimited.</summary>
+    public double HashLimitMBps { get; set; }
+
     /// <summary>"Approve and remember" rules (§10): matching ops run without asking in every mode except union mode.</summary>
     public List<AutoApproveRule> AutoApprove { get; set; } = [];
 
@@ -150,6 +159,12 @@ public sealed class AppSettings
     };
 
     public List<PairSettings> Pairs { get; set; } = [];
+
+    /// <summary>Tray app: run in Windows background mode (low CPU, disk and memory priority, §11).</summary>
+    public bool LowPriority { get; set; } = true;
+
+    /// <summary>Tray app: hard cap of its CPU use, percent of the whole machine; 0 = no cap (§11).</summary>
+    public int CpuLimitPercent { get; set; }
 
     public static AppSettings Load(string path)
     {

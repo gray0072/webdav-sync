@@ -24,6 +24,12 @@ public sealed record ScanProgress(int Files, int Folders, long HashedBytes);
 /// </summary>
 public sealed class LocalScanner(SyncFilter filter, ILogger logger)
 {
+    /// <summary>Keys hashed again even when the base cache matches (the rolling verify, §5.3).</summary>
+    public Func<string, bool>? ForceHash { get; init; }
+
+    /// <summary>Read rate limit for hashing (§11).</summary>
+    public ByteRateLimiter? HashLimiter { get; init; }
+
     private static readonly EnumerationOptions ListOptions = new()
     {
         RecurseSubdirectories = false,
@@ -106,18 +112,19 @@ public sealed class LocalScanner(SyncFilter filter, ILogger logger)
                 var file = (FileInfo)info;
                 var entry = new LocalEntry(key, relPath, false, file.Length, file.LastWriteTimeUtc, fileId);
                 baseEntries.TryGetValue(key, out var b);
-                if (b is { IsDir: false, LocalHash: not null } && b.LocalSize == entry.Size &&
+                var force = ForceHash?.Invoke(key) == true;
+                if (!force && b is { IsDir: false, LocalHash: not null } && b.LocalSize == entry.Size &&
                     Mtime.Equal(entry.MtimeUtc, b.LocalMtimeUtc) &&
                     (b.LocalFileId is null || fileId is null || b.LocalFileId == fileId))
                 {
                     entry = entry with { Hash = b.LocalHash };
                 }
-                else if (hashMode == LocalHashMode.All ||
+                else if (force || hashMode == LocalHashMode.All ||
                          (hashMode == LocalHashMode.Needed && (b is not null || needsHash?.Invoke(key) == true)))
                 {
                     try
                     {
-                        entry = entry with { Hash = await ContentHash.ComputeFileAsync(fullPath, ct).ConfigureAwait(false) };
+                        entry = entry with { Hash = await ContentHash.ComputeFileAsync(fullPath, ct, HashLimiter).ConfigureAwait(false) };
                         hashedBytes += entry.Size;
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

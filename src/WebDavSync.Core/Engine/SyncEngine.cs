@@ -245,14 +245,28 @@ public sealed class SyncEngine : IDisposable
             }
         }
 
-        status?.Report("Scanning local...");
-        var local = await new LocalScanner(filter, _logger).ScanAsync(
+        var verify = VerifySlice(baseEntries);
+        status?.Report(verify.Count > 0 ? $"Scanning local (verifying {verify.Count} files)..." : "Scanning local...");
+        var verifyKeys = verify.Select(v => v.Key).ToHashSet(StringComparer.Ordinal);
+        var local = await new LocalScanner(filter, _logger)
+        {
+            ForceHash = verifyKeys.Count > 0 ? verifyKeys.Contains : null,
+            HashLimiter = Pair.HashLimitMBps > 0 ? new ByteRateLimiter(Pair.HashLimitMBps * 1024 * 1024) : null,
+        }.ScanAsync(
             State.LocalRoot,
             baseEntries,
             LocalHashMode.Needed,
             key => remote.Entries.TryGetValue(key, out var r) && !r.IsDir,
             new InlineProgress<ScanProgress>(p => status?.Report($"Scanning local: {p.Files} files, {p.Folders} folders, hashed {SafetyGuards.Size(p.HashedBytes)}")),
             ct).ConfigureAwait(false);
+
+        if (verify.Count > 0 && local.IsComplete)
+        {
+            Store.SetMeta(MetaKeys.VerifyCursor, verify[^1].Key);
+            Store.VerifyAtUtc = DateTime.UtcNow;
+            notes.Add($"Rolling verify: {verify.Count} files ({SafetyGuards.Size(verify.Sum(v => v.LocalSize))}) hashed again.");
+            _logger.LogInformation("Rolling verify: {Files} files, {Bytes} bytes, up to {Key}", verify.Count, verify.Sum(v => v.LocalSize), verify[^1].Key);
+        }
 
         var trustFileIds = true;
         var markerSerial = State.ReadMarker()?.VolumeSerial;
@@ -321,6 +335,26 @@ public sealed class SyncEngine : IDisposable
         }
 
         return items;
+    }
+
+    /// <summary>This cycle's slice of the rolling verify (§5.3); empty when off, not yet due or before the initial sync.</summary>
+    private IReadOnlyList<BaseEntry> VerifySlice(IReadOnlyDictionary<string, BaseEntry> baseEntries)
+    {
+        if (Pair.LocalVerifyInterval is not { } interval || !Store.InitialSyncDone)
+        {
+            return [];
+        }
+
+        var now = DateTime.UtcNow;
+        if (Store.VerifyAtUtc is not { } last)
+        {
+            Store.VerifyAtUtc = now;
+            return [];
+        }
+
+        var files = baseEntries.Values.Where(b => !b.IsDir && b.LocalHash is not null && Filter.IsSynced(b.Key)).ToList();
+        var budget = RollingVerify.Budget(files.Sum(f => f.LocalSize), last, now, interval);
+        return RollingVerify.Slice(files, Store.GetMeta(MetaKeys.VerifyCursor), budget);
     }
 
     /// <summary>The base's remote side as a snapshot: every base item, every base folder counted as listed.</summary>

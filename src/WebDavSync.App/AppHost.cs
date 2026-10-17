@@ -31,6 +31,9 @@ internal sealed class AppHost : IDisposable
         Logger = _factory.CreateLogger("app");
         Secrets = new SecretStore();
         var settings = AppSettings.Load(paths.SettingsFile);
+        LowPriority = settings.LowPriority;
+        CpuLimitPercent = settings.CpuLimitPercent;
+        ApplyLimits();
         Pairs = settings.Pairs.Select(p => new PairRuntime(p, this)).ToList();
         Logger.LogInformation("App started: {Pairs} pairs, data {DataDir}", Pairs.Count, paths.DataDir);
     }
@@ -42,6 +45,34 @@ internal sealed class AppHost : IDisposable
     public SecretStore Secrets { get; }
 
     public IReadOnlyList<PairRuntime> Pairs { get; }
+
+    public bool LowPriority { get; private set; }
+
+    public int CpuLimitPercent { get; private set; }
+
+    /// <summary>Changes and saves the app-level limits (§11).</summary>
+    public void SetLimits(bool lowPriority, int cpuLimitPercent)
+    {
+        var settings = AppSettings.Load(Paths.SettingsFile);
+        settings.LowPriority = LowPriority = lowPriority;
+        settings.CpuLimitPercent = CpuLimitPercent = cpuLimitPercent;
+        settings.Save(Paths.SettingsFile);
+        ApplyLimits();
+    }
+
+    private void ApplyLimits()
+    {
+        try
+        {
+            ProcessLimits.SetBackground(LowPriority);
+            ProcessLimits.SetCpuLimit(CpuLimitPercent);
+            Logger.LogInformation("Process limits: background mode {Background}, CPU cap {Cap}%", LowPriority, CpuLimitPercent);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            Logger.LogWarning(ex, "Cannot apply process limits");
+        }
+    }
 
     public Microsoft.Extensions.Logging.ILogger CreateLogger(string name) => _factory.CreateLogger(name);
 

@@ -163,6 +163,17 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         _menu.Items.Add(new ToolStripSeparator());
+        var performance = new ToolStripMenuItem("Performance");
+        performance.DropDownItems.Add(new ToolStripMenuItem("Low priority (background mode)", null, (_, _) => SetLimits(!_host.LowPriority, _host.CpuLimitPercent))
+        {
+            Checked = _host.LowPriority,
+        });
+        performance.DropDownItems.Add(Choice(
+            $"CPU limit: {(_host.CpuLimitPercent > 0 ? _host.CpuLimitPercent + "%" : "none")}",
+            new (string, object?)[] { ("None", 0), ("10%", 10), ("25%", 25), ("50%", 50) },
+            _host.CpuLimitPercent,
+            v => SetLimits(_host.LowPriority, (int)v!)));
+        _menu.Items.Add(performance);
         _menu.Items.Add(new ToolStripMenuItem("Start with Windows", null, (_, _) => ToggleStartup()) { Checked = StartupCommand() is not null });
         _menu.Items.Add("Open log folder", null, (_, _) => Open(_host.Paths.LogsDir));
         _menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
@@ -199,26 +210,61 @@ internal sealed class TrayContext : ApplicationContext
         items.Add(new ToolStripMenuItem($"Approvals ({pending})…", null, (_, _) => ShowApprovals(pair)) { Enabled = service is not null });
         items.Add(new ToolStripMenuItem("Choose folders…", null, (_, _) => ChooseFolders(pair)) { Enabled = pair.Remote is not null });
 
+        var settings = new ToolStripMenuItem("Settings");
         var mode = new ToolStripMenuItem($"Mode: {pair.Pair.Mode}");
         foreach (var m in Enum.GetValues<SyncMode>())
         {
             mode.DropDownItems.Add(new ToolStripMenuItem(m.ToString(), null, (_, _) => SetMode(pair, m)) { Checked = pair.Pair.Mode == m });
         }
 
-        items.Add(mode);
+        settings.DropDownItems.Add(mode);
 
         // The full remote check (§8): every cycle without local changes crawls the whole cloud.
-        var poll = new ToolStripMenuItem($"Check cloud every {Format(pair.Pair.RemotePollInterval)}");
-        foreach (var interval in new[] { 15, 30, 60, 180, 360, 720, 1440 }.Select(m => TimeSpan.FromMinutes(m)))
+        settings.DropDownItems.Add(Choice(
+            $"Check cloud every {Format(pair.Pair.RemotePollInterval)}",
+            new[] { 15, 30, 60, 180, 360, 720, 1440 }.Select(m => (Format(TimeSpan.FromMinutes(m)), (object?)TimeSpan.FromMinutes(m))),
+            pair.Pair.RemotePollInterval,
+            v => Save(pair, p => p.RemotePollInterval = (TimeSpan)v!)));
+
+        // Rolling verify (§5.3): re-hash every local file once per period, a slice per cycle.
+        settings.DropDownItems.Add(Choice(
+            $"Verify local files: {(pair.Pair.LocalVerifyInterval is { } vi ? "every " + Format(vi) : "off")}",
+            new (string, object?)[] { ("Off", null), ("Every 7 days", TimeSpan.FromDays(7)), ("Every 30 days", TimeSpan.FromDays(30)), ("Every 90 days", TimeSpan.FromDays(90)) },
+            pair.Pair.LocalVerifyInterval,
+            v => Save(pair, p => p.LocalVerifyInterval = (TimeSpan?)v)));
+
+        settings.DropDownItems.Add(Choice(
+            $"Hashing speed: {(pair.Pair.HashLimitMBps > 0 ? $"{pair.Pair.HashLimitMBps:0} MB/s" : "unlimited")}",
+            new (string, object?)[] { ("Unlimited", 0d), ("20 MB/s", 20d), ("50 MB/s", 50d), ("100 MB/s", 100d) },
+            pair.Pair.HashLimitMBps,
+            v => Save(pair, p => p.HashLimitMBps = (double)v!)));
+        settings.DropDownItems.Add("Set password…", null, async (_, _) => await SetPasswordAsync(pair));
+        items.Add(settings);
+    }
+
+    private static ToolStripMenuItem Choice(string title, IEnumerable<(string Text, object? Value)> options, object? current, Action<object?> choose)
+    {
+        var menu = new ToolStripMenuItem(title);
+        foreach (var (text, value) in options)
         {
-            poll.DropDownItems.Add(new ToolStripMenuItem(Format(interval), null, (_, _) => SetPollInterval(pair, interval))
-            {
-                Checked = pair.Pair.RemotePollInterval == interval,
-            });
+            menu.DropDownItems.Add(new ToolStripMenuItem(text, null, (_, _) => choose(value)) { Checked = Equals(value, current) });
         }
 
-        items.Add(poll);
-        items.Add("Set password…", null, async (_, _) => await SetPasswordAsync(pair));
+        return menu;
+    }
+
+    private void Save(PairRuntime pair, Action<PairSettings> change)
+    {
+        try
+        {
+            _host.SaveSetting(pair.Pair, change);
+            _host.Logger.LogInformation("Pair {Pair}: settings changed from the tray", pair.Pair.Id);
+            pair.Service?.Reschedule();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            MessageBox.Show(ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void SetMode(PairRuntime pair, SyncMode mode)
@@ -260,21 +306,20 @@ internal sealed class TrayContext : ApplicationContext
         }
     }
 
-    private void SetPollInterval(PairRuntime pair, TimeSpan interval)
+    private static string Format(TimeSpan t) =>
+        t.TotalDays >= 2 ? $"{t.TotalDays:0} days" : t.TotalHours >= 1 ? $"{t.TotalHours:0} h" : $"{t.TotalMinutes:0} min";
+
+    private void SetLimits(bool lowPriority, int cpuLimit)
     {
         try
         {
-            _host.SaveSetting(pair.Pair, p => p.RemotePollInterval = interval);
-            _host.Logger.LogInformation("Pair {Pair}: remote poll interval set to {Interval} from the tray", pair.Pair.Id, interval);
-            pair.Service?.Reschedule();
+            _host.SetLimits(lowPriority, cpuLimit);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             MessageBox.Show(ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
-
-    private static string Format(TimeSpan t) => t.TotalHours >= 1 ? $"{t.TotalHours:0} h" : $"{t.TotalMinutes:0} min";
 
     private async Task SetPasswordAsync(PairRuntime pair)
     {

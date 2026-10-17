@@ -36,6 +36,8 @@ public static class MetaKeys
     public const string RemoteMarkerCreated = "remote_marker_created";
     public const string LastFullCrawl = "last_full_crawl";
     public const string ExcludedFolders = "excluded_folders";
+    public const string VerifyAt = "local_verify_at";
+    public const string VerifyCursor = "local_verify_cursor";
 }
 
 /// <summary><c>state.db</c> (§15.3): SQLite in WAL mode, raw SQL.</summary>
@@ -153,6 +155,15 @@ public sealed class StateStore : IDisposable
             ? new DateTime(ticks, DateTimeKind.Utc)
             : null;
         set => SetMeta(MetaKeys.LastFullCrawl, value?.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>When the last rolling-verify slice was taken (§5.3).</summary>
+    public DateTime? VerifyAtUtc
+    {
+        get => long.TryParse(GetMeta(MetaKeys.VerifyAt), NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks)
+            ? new DateTime(ticks, DateTimeKind.Utc)
+            : null;
+        set => SetMeta(MetaKeys.VerifyAt, value?.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture));
     }
 
     public bool InitialSyncDone

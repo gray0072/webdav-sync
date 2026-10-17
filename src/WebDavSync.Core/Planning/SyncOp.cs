@@ -85,6 +85,12 @@ public sealed record SyncOp
     /// </summary>
     public bool Early { get; init; }
 
+    /// <summary>
+    /// Needs a human in every mode, rules included (§10): the local content changed while size and mtime did not,
+    /// which may be disk corruption rather than an edit.
+    /// </summary>
+    public bool NeedsReview { get; init; }
+
     public long Bytes => Type switch
     {
         OpType.Upload => Local?.Size ?? 0,
@@ -98,7 +104,7 @@ public sealed record SyncOp
     public bool IsDelete => Type is OpType.DeleteLocal or OpType.DeleteRemote;
 
     /// <summary>Ops that run without approval in <see cref="SyncMode.Guarded"/> (§10).</summary>
-    public bool IsSafe => Type switch
+    public bool IsSafe => !NeedsReview && Type switch
     {
         OpType.MkdirLocal or OpType.MkdirRemote or OpType.UpdateBase or OpType.ForgetBase => true,
         OpType.Upload or OpType.Download => !Overwrite,

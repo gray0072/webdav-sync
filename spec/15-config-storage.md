@@ -79,7 +79,8 @@ meta(key PK, value)
 - `remote_confirmed = 0` for entries imported from `.cloud.db` until the first crawl adopts them ([§3.5](03-legacy-state.md)).
 - Journal status: `Running`, `Done`, `Failed`, `Skipped`, `Interrupted` ([§6.7](06-sync-algorithm.md)).
 - `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `last_full_crawl` (UTC ticks),
-  `excluded_folders` (JSON keys the state was last planned with, §12.2), `legacy_import`
+  `excluded_folders` (JSON keys the state was last planned with, §12.2), `local_verify_at`, `local_verify_cursor`
+  ([§5.3](05-local.md)), `legacy_import`
   (import stats, JSON), `last_cycle` (summary, JSON), `capabilities` (reserved for probe results).
 - `held`: the held list ([§10](10-modes-approval.md)); `type` is the op type, `path` its display path, `state` the
   item's state on both sides when it was held. Schema 2; opening a schema-1 DB drops its unused `held` table.
@@ -93,7 +94,8 @@ legacy files meaningful)? Default answer for v1: no; the legacy file is imported
 
 ## 15.5 `settings.json` schema
 
-Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Implemented settings of a pair:
+Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ], "lowPriority": true, "cpuLimitPercent": 0 }`
+(the last two are tray-app limits, [§11](11-bandwidth-pause.md)). Implemented settings of a pair:
 
 | Name | Type | Default | Meaning |
 |---|---|---|---|
@@ -119,6 +121,8 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 | `localQuietPeriod` | duration | `00:00:05` | [§8](08-timing.md). `pair set` accepts `5s`, `15m`, `2h`, `1d` or `hh:mm:ss`. |
 | `maxBatchDelay` | duration | `00:01:00` | [§8](08-timing.md). |
 | `remotePollInterval` | duration | `00:15:00` | [§8](08-timing.md); 1 min – 1 day. |
+| `localVerifyInterval` | duration? | off | Rolling verify ([§5.3](05-local.md)); 1 day – 10 years; `none` = off. |
+| `hashLimitMBps` | double | 0 | Read rate of hashing, MB/s ([§11](11-bandwidth-pause.md)); 0 = unlimited. |
 | `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
 | `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)); CLI `wds folders`. |
 | `excludePatterns` | string[] | `[]` | Globs (`*`, `?`); without `/` matched against the name, otherwise against the path ([§12.3](12-filters.md)). |

@@ -53,6 +53,9 @@ internal sealed class PlannerRun
 
     private readonly HashSet<string> _keepUsed = new(StringComparer.Ordinal);
 
+    /// <summary>Files whose content hash differs from the base although size and mtime are equal (§5.3).</summary>
+    private readonly HashSet<string> _silentChanges = new(StringComparer.Ordinal);
+
     public PlannerRun(PlannerInput input)
     {
         _s = input.Settings;
@@ -835,8 +838,21 @@ internal sealed class PlannerRun
             return Change.Created;
         }
 
-        if (l.IsDir || (l.Size == b.LocalSize && Mtime.Equal(l.MtimeUtc, b.LocalMtimeUtc)))
+        if (l.IsDir)
         {
+            return Change.Unchanged;
+        }
+
+        if (l.Size == b.LocalSize && Mtime.Equal(l.MtimeUtc, b.LocalMtimeUtc))
+        {
+            // A hash is known for an unchanged size and mtime only when the file was re-hashed (replaced file with a new
+            // FileId, or the rolling verify): a different content is an edit that kept the time, or corruption.
+            if (l.Hash is { } lh && b.LocalHash is { } blh && lh != blh)
+            {
+                _silentChanges.Add(key);
+                return Change.Modified;
+            }
+
             return Change.Unchanged;
         }
 
@@ -1083,6 +1099,12 @@ internal sealed class PlannerRun
             .ThenBy(o => Phase(o) == 1 ? PathKey.Depth(o.Key) : Phase(o) == 4 ? -PathKey.Depth(o.Key) : 0)
             .ThenBy(o => o.Bytes)
             .ThenBy(o => o.Key, StringComparer.Ordinal);
-        return [.. _early.Select(o => o with { Early = true }), .. ordered];
+        return [.. _early.Select(o => o with { Early = true }), .. ordered.Select(Review)];
+
+        // Same size and time, other content: may be disk corruption, so a human decides in every mode (§10).
+        SyncOp Review(SyncOp o) =>
+            _silentChanges.Contains(o.Key) && !o.IsBaseOnly
+                ? o with { NeedsReview = true, Reason = o.Reason + "; content differs, size and time unchanged" }
+                : o;
     }
 }

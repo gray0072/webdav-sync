@@ -457,6 +457,32 @@ public sealed class EngineScenarioTests : IDisposable
     }
 
     [Fact]
+    public async Task Rolling_verify_finds_an_edit_that_kept_size_and_mtime()
+    {
+        var path = _local.File("vault.bin", "original content");
+        await SyncAsync();
+        await SyncAsync();
+        var mtime = File.GetLastWriteTimeUtc(path);
+        File.WriteAllText(path, "tampered content");
+        File.SetLastWriteTimeUtc(path, mtime);
+
+        // Without the verify the edit is invisible: same size, same time, same FileId.
+        var (unseen, _) = await SyncAsync();
+        PlanAssert.Empty(unseen.Plan);
+
+        _pair.LocalVerifyInterval = TimeSpan.FromDays(30);
+        using (var engine = SyncEngine.Open(_pair, _remote, NullLogger.Instance))
+        {
+            engine.Store.VerifyAtUtc = DateTime.UtcNow - TimeSpan.FromDays(30);
+            var cycle = await engine.PlanAsync(ct: TestContext.Current.CancellationToken);
+            var upload = PlanAssert.Single(cycle.Plan, OpType.Upload, "vault.bin");
+            Assert.True(upload.NeedsReview);
+            Assert.Contains(cycle.Notes, n => n.StartsWith("Rolling verify", StringComparison.Ordinal));
+            Assert.Equal("vault.bin", engine.Store.GetMeta(MetaKeys.VerifyCursor));
+        }
+    }
+
+    [Fact]
     public void Schema_1_state_db_gets_the_new_held_table()
     {
         var path = Path.Combine(_local.Path, "old-state.db");

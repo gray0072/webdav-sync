@@ -78,7 +78,7 @@ public static class Approval
     /// <summary>Action ops that need a human decision in the given mode (guard trips aside).</summary>
     public static IReadOnlyList<SyncOp> NeedingApproval(Plan plan, SyncMode mode) => mode switch
     {
-        SyncMode.Auto => [],
+        SyncMode.Auto => plan.ActionOps.Where(o => o.NeedsReview).ToList(),
         SyncMode.Guarded => plan.ActionOps.Where(o => !o.IsSafe).ToList(),
         _ => plan.ActionOps.ToList(),
     };
@@ -90,7 +90,7 @@ public static class Approval
     public static IReadOnlyList<SyncOp> NeedingApproval(Plan plan, SyncMode mode, bool unionMode, IReadOnlyList<AutoApproveRule> rules) =>
         unionMode
             ? mode == SyncMode.DryRun ? NeedingApproval(plan, mode) : plan.ActionOps.ToList()
-            : NeedingApproval(plan, mode).Where(o => !rules.Any(r => r.Matches(o))).ToList();
+            : NeedingApproval(plan, mode).Where(o => o.NeedsReview || !rules.Any(r => r.Matches(o))).ToList();
 
     /// <summary>
     /// Ops to execute, in plan order. Stops at the first early (phase-0) op that is not approved, because later
