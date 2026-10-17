@@ -14,11 +14,12 @@ internal sealed class TrayContext : ApplicationContext
     private readonly TrayIcons _icons = new();
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _menu = new();
-    private readonly System.Windows.Forms.Timer _animation = new() { Interval = 500 };
+    private readonly System.Windows.Forms.Timer _animation = new() { Interval = 80 };
     private readonly SynchronizationContext _ui;
     private readonly Dictionary<string, DateTime> _lastNotified = [];
     private readonly Dictionary<PairRuntime, ApprovalsForm> _approvals = [];
     private int _frame;
+    private PairState _top;
     private bool _exiting;
 
     public TrayContext(AppHost host)
@@ -35,11 +36,7 @@ internal sealed class TrayContext : ApplicationContext
         };
         _tray.BalloonTipClicked += (_, _) => OpenPendingOrFolder();
         _menu.Opening += (_, _) => BuildMenu();
-        _animation.Tick += (_, _) =>
-        {
-            _frame++;
-            Refresh();
-        };
+        _animation.Tick += (_, _) => _tray.Icon = _icons.Get(_top, ++_frame);
 
         foreach (var pair in host.Pairs)
         {
@@ -100,6 +97,7 @@ internal sealed class TrayContext : ApplicationContext
         var top = states.Count == 0
             ? PairState.Idle
             : states.Select(s => s.State).MaxBy(Severity);
+        _top = top;
         _tray.Icon = _icons.Get(top, _frame);
         _animation.Enabled = top == PairState.Syncing;
 
@@ -128,6 +126,7 @@ internal sealed class TrayContext : ApplicationContext
         PairState.Syncing => 3,
         PairState.Paused => 2,
         PairState.Waiting => 1,
+        PairState.Checking => 1,
         _ => 0,
     };
 
@@ -206,6 +205,18 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         items.Add(mode);
+
+        // The full remote check (§8): every cycle without local changes crawls the whole cloud.
+        var poll = new ToolStripMenuItem($"Check cloud every {Format(pair.Pair.RemotePollInterval)}");
+        foreach (var interval in new[] { 15, 30, 60, 180, 360, 720, 1440 }.Select(m => TimeSpan.FromMinutes(m)))
+        {
+            poll.DropDownItems.Add(new ToolStripMenuItem(Format(interval), null, (_, _) => SetPollInterval(pair, interval))
+            {
+                Checked = pair.Pair.RemotePollInterval == interval,
+            });
+        }
+
+        items.Add(poll);
         items.Add("Set password…", null, async (_, _) => await SetPasswordAsync(pair));
     }
 
@@ -222,6 +233,22 @@ internal sealed class TrayContext : ApplicationContext
             MessageBox.Show(ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
+
+    private void SetPollInterval(PairRuntime pair, TimeSpan interval)
+    {
+        try
+        {
+            _host.SaveSetting(pair.Pair, p => p.RemotePollInterval = interval);
+            _host.Logger.LogInformation("Pair {Pair}: remote poll interval set to {Interval} from the tray", pair.Pair.Id, interval);
+            pair.Service?.Reschedule();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            MessageBox.Show(ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static string Format(TimeSpan t) => t.TotalHours >= 1 ? $"{t.TotalHours:0} h" : $"{t.TotalMinutes:0} min";
 
     private async Task SetPasswordAsync(PairRuntime pair)
     {

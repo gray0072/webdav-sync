@@ -12,6 +12,11 @@ public enum PairState
 {
     Idle,
     Waiting,
+
+    /// <summary>Scanning and crawling to plan a cycle: nothing is transferred yet (a quiet icon, §14).</summary>
+    Checking,
+
+    /// <summary>Executing ops (the animated icon).</summary>
     Syncing,
     Paused,
     NeedsAttention,
@@ -142,6 +147,9 @@ public sealed class PairService : IAsyncDisposable
 
         _loop = Task.Run(() => LoopAsync(_stop.Token));
     }
+
+    /// <summary>Re-evaluates the schedule after a settings change (e.g. the poll interval).</summary>
+    public void Reschedule() => Wake();
 
     public void SyncNow()
     {
@@ -389,11 +397,11 @@ public sealed class PairService : IAsyncDisposable
         }
 
         _logger.LogInformation("Pair {Pair}: cycle ({Reason}, {Kind})", Pair.Name, reason, options.CachedRemote is null ? "full crawl" : $"{options.RefreshFolders.Count} folders re-listed");
-        SetStatus(PairState.Syncing, "Checking for changes");
+        SetStatus(PairState.Checking, "Checking for changes");
         try
         {
             using var engine = SyncEngine.Open(Pair, _remote, _logger);
-            var cycle = await engine.PlanAsync(options, new InlineProgress<string>(text => SetStatus(PairState.Syncing, text)), stop).ConfigureAwait(false);
+            var cycle = await engine.PlanAsync(options, new InlineProgress<string>(text => SetStatus(PairState.Checking, text)), stop).ConfigureAwait(false);
             lock (_lock)
             {
                 _cache = cycle.Remote.IsComplete ? cycle.Remote : null;
@@ -426,7 +434,10 @@ public sealed class PairService : IAsyncDisposable
                 var selected = Approval.Select(cycle.Plan, op => !needingSet.Contains(op), Pair.MaxOpsPerCycle);
                 if (selected.Count > 0 || cycle.Plan.Ops.Count == 0)
                 {
-                    SetStatus(PairState.Syncing, $"Syncing {selected.Count(o => !o.IsBaseOnly)} items");
+                    if (selected.Any(o => !o.IsBaseOnly))
+                    {
+                        SetStatus(PairState.Syncing, $"Syncing {selected.Count(o => !o.IsBaseOnly)} items");
+                    }
                     result = await ExecuteAsync(engine, cycle, selected, stop).ConfigureAwait(false);
                 }
 
@@ -609,13 +620,13 @@ public sealed class PairService : IAsyncDisposable
         PairStatus status;
         lock (_lock)
         {
-            if (_paused && state is not (PairState.Syncing or PairState.Paused))
+            if (_paused && state is not (PairState.Syncing or PairState.Checking or PairState.Paused))
             {
                 state = PairState.Paused;
                 text = PausedText();
             }
 
-            var (next, _) = state is PairState.Syncing ? (null, string.Empty) : NextRunNoSideEffects();
+            var (next, _) = state is PairState.Syncing or PairState.Checking ? (null, string.Empty) : NextRunNoSideEffects();
             status = _status = _status with
             {
                 State = state,

@@ -4,9 +4,15 @@ using WebDavSync.Core.Engine;
 
 namespace WebDavSync.App;
 
-/// <summary>Tray icons per state (§14), drawn at startup: a cloud in the state's color plus a badge.</summary>
+/// <summary>
+/// Tray icons per state (§14), drawn at startup: a cloud in the state's color plus a badge. While syncing, the cloud
+/// pulses smoothly between two blues over <see cref="Frames"/> frames.
+/// </summary>
 internal sealed partial class TrayIcons : IDisposable
 {
+    /// <summary>Frames of one pulse; with the tray's 80 ms timer a pulse takes about 2 s.</summary>
+    public const int Frames = 24;
+
     private readonly Dictionary<(PairState, int), Icon> _icons = [];
 
     public TrayIcons()
@@ -15,12 +21,15 @@ internal sealed partial class TrayIcons : IDisposable
         foreach (var state in Enum.GetValues<PairState>())
         {
             _icons[(state, 0)] = Draw(size, state, 0);
-            _icons[(state, 1)] = Draw(size, state, 1);
+        }
+
+        for (var frame = 1; frame < Frames; frame++)
+        {
+            _icons[(PairState.Syncing, frame)] = Draw(size, PairState.Syncing, frame);
         }
     }
 
-    /// <summary><paramref name="frame"/> alternates while syncing (animated icon).</summary>
-    public Icon Get(PairState state, int frame = 0) => _icons[(state, state == PairState.Syncing ? frame % 2 : 0)];
+    public Icon Get(PairState state, int frame = 0) => _icons[(state, state == PairState.Syncing ? frame % Frames : 0)];
 
     public void Dispose()
     {
@@ -42,7 +51,7 @@ internal sealed partial class TrayIcons : IDisposable
             var cloud = state switch
             {
                 PairState.Offline or PairState.Paused => Color.FromArgb(140, 140, 140),
-                PairState.Syncing => frame == 0 ? Color.FromArgb(0, 120, 215) : Color.FromArgb(80, 170, 240),
+                PairState.Syncing => Pulse(frame),
                 _ => Color.FromArgb(0, 120, 215),
             };
             var s = size / 16f;
@@ -81,6 +90,16 @@ internal sealed partial class TrayIcons : IDisposable
         }
 
         return Icon.FromHandle(bitmap.GetHicon());
+    }
+
+    private static Color Pulse(int frame)
+    {
+        var t = (1 - Math.Cos(2 * Math.PI * frame / Frames)) / 2;
+        Color from = Color.FromArgb(0, 120, 215), to = Color.FromArgb(110, 185, 245);
+        return Color.FromArgb(
+            (int)(from.R + ((to.R - from.R) * t)),
+            (int)(from.G + ((to.G - from.G) * t)),
+            (int)(from.B + ((to.B - from.B) * t)));
     }
 
     private static void Badge(Graphics g, float s, Color color, string mark)
