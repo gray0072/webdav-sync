@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using WebDavSync.Core.Config;
 
 namespace WebDavSync.App;
@@ -23,12 +21,11 @@ internal static class Program
             return 1;
         }
 
-        // One instance per data folder (§15.1 app.lock + named mutex).
-        var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(paths.DataDir.ToUpperInvariant())))[..16];
-        using var mutex = new Mutex(initiallyOwned: true, $@"Local\WebDavSync-{id}", out var created);
+        // One instance per Windows user, whatever folder it runs from: two copies would sync the same folders twice.
+        using var mutex = new Mutex(initiallyOwned: true, @"Local\WebDavSync", out var created);
         if (!created)
         {
-            MessageBox.Show("WebDavSync is already running for this data folder (see the tray).", "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("WebDavSync is already running — look for the cloud icon in the notification area (you may need to click ^ to see it).", "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;
         }
 

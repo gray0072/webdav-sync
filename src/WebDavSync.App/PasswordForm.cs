@@ -1,7 +1,7 @@
 namespace WebDavSync.App;
 
 /// <summary>Asks for an app password; it goes to the Windows Credential Manager (§15.1), never to settings or logs.</summary>
-internal sealed class PasswordForm : Form
+internal sealed class PasswordForm : ScaledForm
 {
     private readonly TextBox _password = new() { UseSystemPasswordChar = true, Width = 360 };
 

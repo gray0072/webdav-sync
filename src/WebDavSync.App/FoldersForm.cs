@@ -5,7 +5,7 @@ using WebDavSync.Core.Remote;
 namespace WebDavSync.App;
 
 /// <summary>Choose folders (§12.2, §14): checkbox list of the top-level folders of both sides.</summary>
-internal sealed class FoldersForm : Form
+internal sealed class FoldersForm : ScaledForm
 {
     private readonly PairSettings _pair;
     private readonly IRemoteStore _remote;

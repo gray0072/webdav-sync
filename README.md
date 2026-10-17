@@ -40,13 +40,14 @@ It is used daily on a 415 GB / 43 700-file folder synced with Mail.ru Cloud.
   to the Recycle Bin, no deletions at all during the first sync. See [Safety guarantees](#safety-guarantees).
 - ✅ **You stay in control** — four modes from *DryRun* to *Auto*; an approvals window with checkboxes;
   "approve and remember" rules; rejected changes are *held* until the file changes again.
-- 🖥️ **Tray app** — status icon, sync now, pause, approvals, folder selection; plus a full-featured CLI (`wds`).
+- 🖥️ **Tray app** — a setup wizard, status icon, sync now, pause, approvals, folder selection; plus a CLI for
+  advanced use.
 - ⚡ **Efficient** — local changes re-list only the touched cloud folders; full cloud checks run on a schedule you
   choose; parallel listings; start-up trusts a fresh state instead of re-crawling.
 - 📦 **Large files** — interrupted downloads resume with HTTP `Range`; dropped transfers are retried.
 - 📁 **Selective sync** — choose which top-level folders are synced; excluding never deletes anything.
-- 🔐 **Portable, passwords outside** — two `.exe` files and a `data` folder; passwords live in the Windows
-  Credential Manager.
+- 🔐 **Portable, passwords outside** — one `.exe` and a `data` folder; passwords live in the Windows Credential
+  Manager.
 - 🪶 **Light on the machine** — background (low-priority) mode, optional CPU cap, hashing speed limit, and an optional
   *rolling verify* that re-hashes your files bit by bit to catch silent changes.
 - ☁️ **Mail.ru ready** — imports the state of the old Mail.ru client (`.cloud.db`), so an existing folder is picked
@@ -100,34 +101,28 @@ updated only after the result is verified on the target side.
 
 1. Download `WebDavSync-<version>-win-x64.zip` from [Releases](https://github.com/gray0072/webdav-sync/releases/latest).
 2. Unpack it into a **writable** folder, e.g. `D:\Apps\WebDavSync` (not `Program Files`).
+3. Run `WebDavSync.exe`.
 
-That's it — the folder is portable: `WebDavSync.exe` (tray), `wds.exe` (CLI) and a `data\` folder created next to them.
+The folder is portable: settings and logs go to a `data\` folder next to the program.
 
-## Quick start
+## Getting started
 
-```powershell
-cd D:\Apps\WebDavSync
+On the first start a short wizard opens:
 
-# 1. Check the account and detect what the server supports (Mail.ru: content hashes in getetag)
-$env:WDS_PASSWORD = '<app password>'
-.\wds.exe probe --url https://webdav.cloud.mail.ru/ --user you@mail.ru
+1. **Connect your cloud** — choose *Mail.ru Cloud* (or another WebDAV server), enter your login and an
+   **app password**. The wizard checks the connection right away.
+2. **Choose the folders** — a folder on this computer and a folder in the cloud (*Browse…* shows the cloud's
+   folders). The wizard explains what will happen:
+   - a folder used by the old Mail.ru Cloud app is **taken over** — only the differences are synced;
+   - a folder synced by WebDavSync before (e.g. after moving the app) **reuses its state**;
+   - files already in the folder are **merged** with the cloud — nothing is deleted on either side.
+3. **How careful should it be?** — *ask before every change* (recommended at the start), *ask only before
+   deleting, overwriting or moving*, or *sync everything by itself*; and whether to start with Windows.
 
-# 2. Create a pair: local folder <-> cloud folder
-#    (--import-legacy picks up the old Mail.ru client's state from D:\Cloud\.cloud.db)
-.\wds.exe pair add --name cloud --local D:\Cloud --url https://webdav.cloud.mail.ru/ --remote-root / --user you@mail.ru --mode ApproveAll
+Then the cloud icon appears next to the clock. The first check of the cloud takes a few minutes; after that,
+changes are picked up within seconds. In the careful mode, click the icon to see and approve the changes.
 
-# 3. Store the password in the Windows Credential Manager (hidden prompt)
-.\wds.exe secret set cloud
-
-# 4. See what would happen — nothing is changed
-.\wds.exe plan cloud
-
-# 5. Start the tray app
-.\WebDavSync.exe
-```
-
-In *ApproveAll* mode every change waits in the **Approvals** window (click the tray icon). Once you trust it, switch
-the mode in *Settings ▸ Mode* to *Guarded* (only deletions, overwrites and conflicts ask) or *Auto*.
+More folders: *Add a folder…* in the tray menu. Only one copy of the app runs at a time.
 
 ## Modes
 
@@ -155,7 +150,11 @@ Menu: *Open folder* · *Open cloud in browser* · *Sync now* · *Pause* (15 min,
 *Approvals* · *Choose folders* · *Settings* (mode, cloud check interval, local verify, hashing speed, password) ·
 *Performance* (low priority, CPU limit) · *Start with Windows* · *Open log folder* · *About*.
 
-## Command line
+## Command line (advanced)
+
+The release contains only the tray app. The command-line tool `wds.exe` is built from source together with it
+(`scripts\publish.ps1`, see [Build from source](#build-from-source)) and works on the same `data\` folder; it is
+useful for scripting, diagnostics and the first cycles of a big folder.
 
 | Command | Purpose |
 |---|---|
@@ -205,7 +204,7 @@ git clone https://github.com/gray0072/webdav-sync.git
 cd webdav-sync
 dotnet build
 dotnet test --project tests/WebDavSync.Core.Tests
-.\scripts\publish.ps1 -Output D:\Apps\WebDavSync     # portable single-file build
+.\scripts\publish.ps1 -Output D:\Apps\WebDavSync     # portable build: WebDavSync.exe + wds.exe
 ```
 
 Requires the .NET 10 SDK. Integration tests run against `rclone serve webdav` in Docker and are skipped without it.

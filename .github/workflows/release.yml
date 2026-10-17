@@ -22,7 +22,7 @@ jobs:
 
       - name: Portable build
         shell: pwsh
-        run: ./scripts/publish.ps1 -Output dist
+        run: ./scripts/publish.ps1 -Output dist -AppOnly
 
       - name: Package
         id: package

@@ -48,8 +48,39 @@ internal sealed class TrayContext : ApplicationContext
         Refresh();
         if (host.Pairs.Count == 0)
         {
-            _tray.ShowBalloonTip(10_000, "WebDavSync", $"No pairs in {host.Paths.SettingsFile}. Create one with 'wds pair add'.", ToolTipIcon.Warning);
+            // First run: the setup wizard instead of an empty tray icon.
+            _ui.Post(_ => ShowSetup(firstRun: true), null);
         }
+    }
+
+    private void ShowSetup(bool firstRun)
+    {
+        using var wizard = new SetupWizard(_host, firstRun);
+        if (wizard.ShowDialog() != DialogResult.OK || wizard.CreatedPair is not { } pair)
+        {
+            if (_host.Pairs.Count == 0)
+            {
+                _tray.ShowBalloonTip(10_000, "WebDavSync", "Not set up yet. Right-click this icon and choose 'Set up sync…' when you are ready.", ToolTipIcon.Info);
+            }
+
+            return;
+        }
+
+        if (wizard.StartWithWindows)
+        {
+            SetStartup(true);
+        }
+
+        pair.Restarted += (_, _) => Attach(pair);
+        pair.Start();
+        Attach(pair);
+        Refresh();
+        _tray.ShowBalloonTip(
+            10_000,
+            "WebDavSync",
+            $"Syncing {pair.Pair.LocalRoot}. The first check of the cloud can take a few minutes; " +
+            (pair.Pair.Mode == SyncMode.ApproveAll ? "then click this icon to approve the changes." : "the icon pulses while files are copied."),
+            ToolTipIcon.Info);
     }
 
     private void Attach(PairRuntime pair)
@@ -148,7 +179,11 @@ internal sealed class TrayContext : ApplicationContext
     private void BuildMenu()
     {
         _menu.Items.Clear();
-        if (_host.Pairs.Count == 1)
+        if (_host.Pairs.Count == 0)
+        {
+            _menu.Items.Add(new ToolStripMenuItem("Set up sync…", null, (_, _) => ShowSetup(firstRun: true)) { Font = new Font(_menu.Font, FontStyle.Bold) });
+        }
+        else if (_host.Pairs.Count == 1)
         {
             AddPairItems(_menu.Items, _host.Pairs[0]);
         }
@@ -163,6 +198,11 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         _menu.Items.Add(new ToolStripSeparator());
+        if (_host.Pairs.Count > 0)
+        {
+            _menu.Items.Add("Add a folder…", null, (_, _) => ShowSetup(firstRun: false));
+        }
+
         var performance = new ToolStripMenuItem("Performance");
         performance.DropDownItems.Add(new ToolStripMenuItem("Low priority (background mode)", null, (_, _) => SetLimits(!_host.LowPriority, _host.CpuLimitPercent))
         {
@@ -174,7 +214,7 @@ internal sealed class TrayContext : ApplicationContext
             _host.CpuLimitPercent,
             v => SetLimits(_host.LowPriority, (int)v!)));
         _menu.Items.Add(performance);
-        _menu.Items.Add(new ToolStripMenuItem("Start with Windows", null, (_, _) => ToggleStartup()) { Checked = StartupCommand() is not null });
+        _menu.Items.Add(new ToolStripMenuItem("Start with Windows", null, (_, _) => SetStartup(StartupCommand() is null)) { Checked = StartupCommand() is not null });
         _menu.Items.Add("Open log folder", null, (_, _) => Open(_host.Paths.LogsDir));
         _menu.Items.Add($"About WebDavSync {Application.ProductVersion.Split('+')[0]}…", null, (_, _) => Open("https://github.com/gray0072/webdav-sync"));
         _menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
@@ -377,16 +417,16 @@ internal sealed class TrayContext : ApplicationContext
     }
 
     /// <summary>Per-user autostart (HKCU Run) with this instance's data folder.</summary>
-    private void ToggleStartup()
+    private void SetStartup(bool on)
     {
         using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RunKey);
-        if (StartupCommand() is not null)
+        if (on)
         {
-            key.DeleteValue("WebDavSync", throwOnMissingValue: false);
+            key.SetValue("WebDavSync", $"\"{Environment.ProcessPath}\" --data-dir \"{_host.Paths.DataDir}\"");
         }
         else
         {
-            key.SetValue("WebDavSync", $"\"{Environment.ProcessPath}\" --data-dir \"{_host.Paths.DataDir}\"");
+            key.DeleteValue("WebDavSync", throwOnMissingValue: false);
         }
     }
 

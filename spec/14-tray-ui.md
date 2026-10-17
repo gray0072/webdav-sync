@@ -32,7 +32,8 @@ Rate-limited (one per category per 10 min), never a toast per file.
 ## 14.1 Implemented (first tray milestone, `src/WebDavSync.App`, executable `WebDavSync.exe`)
 
 - `WebDavSync.exe [--data-dir <path>]` (default `<app dir>\data` or `WDS_DATA_DIR`); exits with an error if the data
-  folder is not writable; one instance per data folder (named mutex). One `PairService` (§8) per pair of
+  folder is not writable; one instance per Windows user, wherever it runs from (named mutex `Local\WebDavSync`; a
+  second start shows "already running" and exits). Forms are DPI-scaled (sizes given at 96 DPI). One `PairService` (§8) per pair of
   `settings.json`; the password comes from the Credential Manager, then `WDS_PASSWORD`.
 - Icon: all states of the table, drawn at startup; syncing pulses smoothly (24 frames, cosine between two blues,
   ~2 s per pulse); a background check is quiet (Checking looks like Idle), so the periodic crawl does not animate; the most severe pair state wins
@@ -48,4 +49,24 @@ Rate-limited (one per category per 10 min), never a toast per file.
 - Notifications: balloon tips for approvals waiting, failed ops and errors, one per pair and category per 10 min.
 - Choose folders: checkbox list of the top-level folders (local + cloud / local only / cloud only); unchecking
   asks for confirmation and states that nothing is deleted (§12.2).
-- Not yet: Activity, Conflicts and Errors windows, Settings window, Windows toasts.
+- Not yet: Activity, Conflicts and Errors windows, Settings window, Windows toasts, removing a pair.
+
+## 14.2 Setup wizard
+
+Opens on the first start (no pairs) and from *Add a folder…*; cancelling the first-run wizard leaves *Set up sync…*
+in the menu.
+
+1. **Connect your cloud**: Mail.ru Cloud (endpoint fixed, hash property `{DAV:}getetag`, one root listing proves the
+   login; link to the app-password page) or another WebDAV server (the probe, §4.2, runs and sets
+   `remoteHashProperty`; it creates and deletes a test folder). Wrong login → "the login or the app password is wrong".
+2. **Choose the folders**: local folder (folder picker; default: a `Cloud` folder of a fixed drive that has a legacy
+   `.cloud.db` or a `.webdavsync` state, else `%USERPROFILE%\Cloud`), cloud folder (tree of the cloud's folders,
+   loaded per level). The page explains what happens: an existing `.webdavsync\pair.json` for the same server → the
+   pair is created with **that pair id**, so its `state.db` (base, initial sync done) and the remote marker are reused
+   and nothing starts over (e.g. after moving the app or losing `settings.json`); a legacy `.cloud.db` → "take over
+   the old client's state" (§3.4, on by default, remote root `/`); a non-empty folder → union merge, nothing deleted;
+   a missing folder → created.
+3. **How careful**: ApproveAll ("ask before every change", default), Guarded, Auto; start with Windows (on).
+
+Finish creates the local state, imports the legacy state if chosen, stores the password in the Credential Manager,
+adds the pair to `settings.json` and starts it.

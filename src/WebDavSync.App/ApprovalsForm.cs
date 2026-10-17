@@ -5,7 +5,7 @@ using WebDavSync.Core.Planning;
 namespace WebDavSync.App;
 
 /// <summary>Approvals window (§14): the pending ops of a pair with checkboxes; approve executes, reject holds (§10).</summary>
-internal sealed class ApprovalsForm : Form
+internal sealed class ApprovalsForm : ScaledForm
 {
     private const int MaxRows = 5000;
 

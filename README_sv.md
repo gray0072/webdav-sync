@@ -41,13 +41,13 @@ Den används dagligen på en mapp med 415 GB / 43 700 filer som synkroniseras me
   raderingar hamnar i Papperskorgen och vid första synkroniseringen raderas ingenting. Se [Säkerhetsgarantier](#säkerhetsgarantier).
 - ✅ **Du har kontrollen** — fyra lägen från *DryRun* till *Auto*; ett godkännandefönster med kryssrutor; regler för
   "godkänn och kom ihåg"; avvisade ändringar *hålls kvar* tills filen ändras igen.
-- 🖥️ **App i aktivitetsfältet** — statusikon, synkronisera nu, paus, godkännanden, val av mappar; plus ett komplett
-  kommandoradsverktyg (`wds`).
+- 🖥️ **App i aktivitetsfältet** — installationsguide, statusikon, synkronisera nu, paus, godkännanden, val av mappar;
+  plus ett kommandoradsverktyg för avancerad användning.
 - ⚡ **Effektiv** — vid lokala ändringar listas bara de berörda molnmapparna om; hela molnet kontrolleras enligt ett
   schema du väljer; parallella förfrågningar; vid start litar den på ett färskt läge i stället för att gå igenom allt igen.
 - 📦 **Stora filer** — avbrutna nedladdningar återupptas med HTTP `Range`; avbrutna överföringar görs om.
 - 📁 **Selektiv synkronisering** — välj vilka mappar på översta nivån som synkroniseras; att utesluta en mapp raderar aldrig något.
-- 🔐 **Portabel, lösenord utanför** — två `.exe`-filer och en `data`-mapp; lösenorden lagras i Windows Autentiseringshanteraren.
+- 🔐 **Portabel, lösenord utanför** — en `.exe`-fil och en `data`-mapp; lösenorden lagras i Windows Autentiseringshanteraren.
 - 🪶 **Skonsam mot datorn** — bakgrundsläge med låg prioritet, valfritt CPU-tak, hastighetsgräns för hashning och en
   valfri *rullande kontroll* som hashar om filerna bit för bit för att upptäcka tysta ändringar.
 - ☁️ **Redo för Mail.ru** — importerar läget från den gamla Mail.ru-klienten (`.cloud.db`), så en befintlig mapp tas
@@ -101,34 +101,28 @@ basen uppdateras först när resultatet är verifierat på målsidan.
 
 1. Ladda ned `WebDavSync-<version>-win-x64.zip` från [Releases](https://github.com/gray0072/webdav-sync/releases/latest).
 2. Packa upp den i en **skrivbar** mapp, t.ex. `D:\Apps\WebDavSync` (inte `Program Files`).
+3. Starta `WebDavSync.exe`.
 
-Klart — mappen är portabel: `WebDavSync.exe` (aktivitetsfältet), `wds.exe` (kommandoraden) och en `data\`-mapp som skapas bredvid.
+Mappen är portabel: inställningar och loggar sparas i en `data\`-mapp bredvid programmet.
 
 ## Kom igång
 
-```powershell
-cd D:\Apps\WebDavSync
+Vid första starten öppnas en kort guide:
 
-# 1. Kontrollera kontot och vad servern stöder (Mail.ru: innehållshashar i getetag)
-$env:WDS_PASSWORD = '<applösenord>'
-.\wds.exe probe --url https://webdav.cloud.mail.ru/ --user you@mail.ru
+1. **Anslut ditt moln** — välj *Mail.ru Cloud* (eller en annan WebDAV-server), ange inloggning och ett
+   **applösenord**. Guiden kontrollerar anslutningen direkt.
+2. **Välj mapparna** — en mapp på datorn och en mapp i molnet (*Browse…* visar molnets mappar). Guiden förklarar vad
+   som kommer att hända:
+   - en mapp som den gamla Mail.ru Cloud-appen använde **tas över** — bara skillnaderna synkroniseras;
+   - en mapp som WebDavSync redan har synkroniserat (t.ex. efter att appen flyttats) **fortsätter med sitt läge**;
+   - filer som redan finns i mappen **slås ihop** med molnet — ingenting raderas på någon sida.
+3. **Hur försiktig ska den vara?** — *fråga före varje ändring* (rekommenderas i början), *fråga bara innan något
+   raderas, skrivs över eller flyttas*, eller *synkronisera allt själv*; och om den ska starta med Windows.
 
-# 2. Skapa ett par: lokal mapp <-> mapp i molnet
-#    (--import-legacy tar över läget från den gamla Mail.ru-klienten i D:\Cloud\.cloud.db)
-.\wds.exe pair add --name cloud --local D:\Cloud --url https://webdav.cloud.mail.ru/ --remote-root / --user you@mail.ru --mode ApproveAll
+Sedan visas molnikonen bredvid klockan. Första kontrollen av molnet tar några minuter; därefter plockas ändringar upp
+inom sekunder. I det försiktiga läget klickar du på ikonen för att se och godkänna ändringarna.
 
-# 3. Spara lösenordet i Windows Autentiseringshanteraren (dold inmatning)
-.\wds.exe secret set cloud
-
-# 4. Se vad som skulle hända — ingenting ändras
-.\wds.exe plan cloud
-
-# 5. Starta appen i aktivitetsfältet
-.\WebDavSync.exe
-```
-
-I läget *ApproveAll* väntar varje ändring i fönstret **Approvals** (klicka på ikonen). När du litar på den, byt läge
-under *Settings ▸ Mode* till *Guarded* (bara raderingar, överskrivningar och konflikter frågar) eller *Auto*.
+Fler mappar: *Add a folder…* i menyn. Bara en kopia av appen körs åt gången.
 
 ## Lägen
 
@@ -156,7 +150,11 @@ Meny: *Open folder* · *Open cloud in browser* · *Sync now* · *Pause* (15 min,
 *Approvals* · *Choose folders* · *Settings* (läge, intervall för molnkontroll, lokal kontroll, hashningshastighet,
 lösenord) · *Performance* (låg prioritet, CPU-tak) · *Start with Windows* · *Open log folder* · *About*.
 
-## Kommandoraden
+## Kommandoraden (avancerat)
+
+Nedladdningen innehåller bara appen. Kommandoradsverktyget `wds.exe` byggs från källkoden tillsammans med den
+(`scripts\publish.ps1`, se [Bygga från källkod](#bygga-från-källkod)) och använder samma `data\`-mapp; det är
+praktiskt för skript, felsökning och de första cyklerna för en stor mapp.
 
 | Kommando | Syfte |
 |---|---|
@@ -206,7 +204,7 @@ git clone https://github.com/gray0072/webdav-sync.git
 cd webdav-sync
 dotnet build
 dotnet test --project tests/WebDavSync.Core.Tests
-.\scripts\publish.ps1 -Output D:\Apps\WebDavSync     # portabelt bygge med en fil per program
+.\scripts\publish.ps1 -Output D:\Apps\WebDavSync     # portabelt bygge: WebDavSync.exe + wds.exe
 ```
 
 Kräver .NET 10 SDK. Integrationstesterna körs mot `rclone serve webdav` i Docker och hoppas över utan det.

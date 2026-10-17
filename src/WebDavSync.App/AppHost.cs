@@ -34,7 +34,7 @@ internal sealed class AppHost : IDisposable
         LowPriority = settings.LowPriority;
         CpuLimitPercent = settings.CpuLimitPercent;
         ApplyLimits();
-        Pairs = settings.Pairs.Select(p => new PairRuntime(p, this)).ToList();
+        _pairs = settings.Pairs.Select(p => new PairRuntime(p, this)).ToList();
         Logger.LogInformation("App started: {Pairs} pairs, data {DataDir}", Pairs.Count, paths.DataDir);
     }
 
@@ -44,7 +44,37 @@ internal sealed class AppHost : IDisposable
 
     public SecretStore Secrets { get; }
 
-    public IReadOnlyList<PairRuntime> Pairs { get; }
+    private readonly List<PairRuntime> _pairs;
+
+    public IReadOnlyList<PairRuntime> Pairs => _pairs;
+
+    /// <summary>
+    /// Creates a pair from the setup wizard (§14): local state (or the reused state of an earlier setup), optional
+    /// legacy import, <c>settings.json</c>, the password. The caller starts the returned runtime.
+    /// </summary>
+    public PairRuntime CreatePair(PairSettings pair, string password, bool importLegacy, bool resetState)
+    {
+        var settings = AppSettings.Load(Paths.SettingsFile);
+        if (settings.Find(pair.Id) is not null || settings.Pairs.Any(p => string.Equals(Path.GetFullPath(p.LocalRoot), Path.GetFullPath(pair.LocalRoot), StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException($"'{pair.LocalRoot}' is already synced by this app.");
+        }
+
+        PairSetup.InitializeLocal(pair, resetState);
+        if (importLegacy)
+        {
+            PairSetup.ImportLegacy(pair, force: false);
+        }
+
+        Secrets.Set(pair.Id, password, pair.User);
+        settings.Pairs.Add(pair);
+        settings.Save(Paths.SettingsFile);
+        Logger.LogInformation("Pair {Pair} ({Id}) created by the setup wizard: {Local} <-> {Url}{Root}, mode {Mode}, legacy import {Import}",
+            pair.Name, pair.Id, pair.LocalRoot, pair.RemoteUrl, pair.RemoteRootNormalized, pair.Mode, importLegacy);
+        var runtime = new PairRuntime(pair, this);
+        _pairs.Add(runtime);
+        return runtime;
+    }
 
     public bool LowPriority { get; private set; }
 
