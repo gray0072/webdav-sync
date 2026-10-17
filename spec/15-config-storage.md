@@ -9,22 +9,28 @@ Two places, by ownership:
 
 ## 15.1 App data — `<app dir>\data\`
 
+Portable layout (`scripts\publish.ps1 -Output <folder>`): two single-file executables and the data folder, nothing
+else; framework-dependent (.NET 10 Desktop Runtime), win-x64.
+
 ```
-data\
-  settings.json        app settings + list of pairs (pair id, local root, remote URL, login, mode, limits, ...)
-  secrets.dat          app passwords, DPAPI-encrypted (CurrentUser scope), keyed by pair id
-  logs\                rolling log files
+<app dir>\
+  WebDavSync.exe       tray app (§14)
+  wds.exe              CLI
+  data\
+    settings.json      app settings + list of pairs (pair id, local root, remote URL, login, mode, limits, ...)
+    logs\              rolling log files
+    probe-*.json       probe reports (§4.2)
   diagnostics\         exported diagnostics bundles
   app.lock             single-instance lock (in addition to the named mutex)
 ```
 
 - The app dir must be writable (portable install, not `Program Files`). If it is not
   writable → clear error at startup and exit; no silent fallback to `%APPDATA%`.
-- `secrets.dat`: JSON `{ "<pair id>": "<base64 DPAPI blob>" }`, entropy `WebDavSync/<pair id>`. CLI:
-  `wds secret set <pair> [--from-env]` (hidden prompt), `wds secret remove <pair>`; a pair's password is taken from
-  `secrets.dat`, then from `WDS_PASSWORD` (probe and scripts use only the variable).
-- `secrets.dat` is bound to the Windows user (DPAPI): copying the app folder to another
-  user/machine requires re-entering the password. Never stored in plain text, never logged.
+- Passwords are not in the app folder: Windows Credential Manager, generic credential `WebDavSync/<pair id>`
+  (user name = login), persisted for the current user on this machine. CLI: `wds secret set <pair> [--from-env]`
+  (hidden prompt), `wds secret remove <pair>`; tray: "Set password…". A pair's password is taken from the Credential
+  Manager, then from `WDS_PASSWORD` (probe and scripts use only the variable). Copying the app folder to another
+  user/machine requires entering the password again. Never stored in plain text, never logged.
 - Logs: rolling daily files, 30 days, default level Information; Debug toggle in Settings.
   Each op logged with: pair id, cycle id, op id, type, path(s), sizes, reason, result, duration.
 - "Export diagnostics" bundles logs + state stats (no file contents, no credentials).
@@ -94,7 +100,7 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 | `localRoot` | path | — | Local root folder. |
 | `remoteUrl` | URL | — | WebDAV endpoint ([§4.4](04-remote-webdav.md)). |
 | `remoteRoot` | string | `/` | Remote root folder under the endpoint. |
-| `user` | string | — | Login; the password is in `secrets.dat` (`wds secret set <pair>`); fallback: env `WDS_PASSWORD`. |
+| `user` | string | — | Login; the password is in the Credential Manager (`wds secret set <pair>`); fallback: env `WDS_PASSWORD`. |
 | `mode` | `DryRun` \| `ApproveAll` \| `Guarded` \| `Auto` | `ApproveAll` | [§10](10-modes-approval.md). |
 | `maxOpsPerCycle` | int? | unlimited | Action ops per cycle ([§10](10-modes-approval.md)). |
 | `conflictWinner` | `Local` \| `Remote` \| `Newer` | `Local` | [§6.4](06-sync-algorithm.md). |

@@ -40,7 +40,7 @@ Acceptance:
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 218 unit + 6 integration, all green (`dotnet test`).
+- Tests: 217 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
 
@@ -83,7 +83,7 @@ Mail.ru because the remote hash is known ([§3.5](03-legacy-state.md)).
 ## 19.6 Not needed for the prototype
 
 Bandwidth limits ([§11](11-bandwidth-pause.md)), selective sync on the fly ([§12.2](12-filters.md)), toasts, schedule,
-diagnostics export. Passwords: `secrets.dat` (`wds secret set`, §15.1) or the environment variable
+diagnostics export. Passwords: Windows Credential Manager (`wds secret set`, §15.1) or the environment variable
 `WDS_PASSWORD`; never from command-line args or files in the repo.
 
 ## 19.7 Findings during the prototype
@@ -185,7 +185,7 @@ Next, in order:
    (§4.3). Expected on `D:\Cloud`: bound by `maxRequestsPerSecond = 5` → ~3 min instead of ~7; to be measured on the
    next real cycle. If Mail.ru tolerates it, `wds pair set cloud maxRequestsPerSecond=10` halves that.
 5. Tray app milestone (§14), in steps:
-   - 5a ~~`secrets.dat`~~ — done 2026-10-17: DPAPI store, `wds secret set|remove` (§15.1).
+   - 5a ~~Stored passwords~~ — done 2026-10-17: Windows Credential Manager, `wds secret set|remove` (§15.1).
    - 5b ~~Pair service~~ — done 2026-10-17: `PairService` (§8, §10): triggers, states of §14, pending approvals.
    - 5c ~~Local-change cycles without a full crawl~~ — done 2026-10-17: cached snapshot + re-list (§4.3 #3, §8).
    - 5d ~~WinForms tray app~~ — done 2026-10-17: `src/WebDavSync.App` (§14.1). Next: run it on `D:\Cloud` in

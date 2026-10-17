@@ -29,7 +29,7 @@ internal sealed class AppHost : IDisposable
             .CreateLogger();
         _factory = new SerilogLoggerFactory(_serilog);
         Logger = _factory.CreateLogger("app");
-        Secrets = new SecretStore(paths.SecretsFile);
+        Secrets = new SecretStore();
         var settings = AppSettings.Load(paths.SettingsFile);
         Pairs = settings.Pairs.Select(p => new PairRuntime(p, this)).ToList();
         Logger.LogInformation("App started: {Pairs} pairs, data {DataDir}", Pairs.Count, paths.DataDir);

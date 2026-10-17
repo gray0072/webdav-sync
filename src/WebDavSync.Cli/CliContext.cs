@@ -45,10 +45,10 @@ internal sealed class CliContext : IDisposable
     public PairSettings RequirePair(string idOrName) =>
         Settings.Find(idOrName) ?? throw new CliException($"Pair '{idOrName}' not found in {Paths.SettingsFile}. Use 'wds pair list'.");
 
-    public SecretStore Secrets => new(Paths.SecretsFile);
+    public SecretStore Secrets { get; } = new();
 
     /// <summary>
-    /// The password never comes from arguments or files in the repo: <c>secrets.dat</c> for a pair (§15.1), otherwise
+    /// The password never comes from arguments or files in the repo: the Windows Credential Manager for a pair (§15.1), otherwise
     /// the environment variable (probe, scripts).
     /// </summary>
     public string RequirePassword(PairSettings? pair = null) =>

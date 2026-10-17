@@ -33,7 +33,7 @@ Rate-limited (one per category per 10 min), never a toast per file.
 
 - `WebDavSync.exe [--data-dir <path>]` (default `<app dir>\data` or `WDS_DATA_DIR`); exits with an error if the data
   folder is not writable; one instance per data folder (named mutex). One `PairService` (§8) per pair of
-  `settings.json`; the password comes from `secrets.dat`, then `WDS_PASSWORD`.
+  `settings.json`; the password comes from the Credential Manager, then `WDS_PASSWORD`.
 - Icon: all states of the table, drawn at startup; syncing pulses smoothly (24 frames, cosine between two blues,
   ~2 s per pulse); a background check is quiet (Checking looks like Idle), so the periodic crawl does not animate; the most severe pair state wins
   (Error > Needs attention > Offline > Syncing > Paused > Waiting > Idle). Tooltip: status text (+ last sync time).

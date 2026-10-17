@@ -27,7 +27,8 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
 
 ## Storage
 
-- App data (settings, DPAPI secrets, logs) — next to the executable in `<app dir>\data\`.
+- App data (settings, logs) — next to the executable in `<app dir>\data\`; portable build: `scripts\publish.ps1`.
+- Passwords — Windows Credential Manager (`WebDavSync/<pair id>`), never in the app folder.
 - Sync state of a pair (`state.db`, backups, temp downloads, trash fallback) — inside the synced
   folder in `<local root>\.webdavsync\` (hidden, never synced). Details: [§15](spec/15-config-storage.md).
 

@@ -36,7 +36,7 @@ spec/                       this specification
 - WebDAV: own thin client over `HttpClient` (PROPFIND/GET/PUT/MKCOL/MOVE/DELETE/PROPPATCH),
   streaming bodies, so throttling, cancellation and retries are fully under our control.
 - `Microsoft.Extensions.Hosting` / DI / Logging; rolling file log (Serilog or equivalent).
-- Credentials DPAPI-encrypted in `<app dir>\data\secrets.dat`, never in plain config ([§15](15-config-storage.md)).
+- Credentials in the Windows Credential Manager (per user, outside the portable app folder), never in plain config ([§15](15-config-storage.md)).
 - Recycle Bin via `Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile/DeleteDirectory(..., RecycleOption.SendToRecycleBin)`
   or `IFileOperation`.
 - Single instance per user (named mutex); single engine per pair (`<local root>\.webdavsync\engine.lock`).

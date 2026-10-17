@@ -183,8 +183,6 @@ public sealed class AppPaths(string dataDir)
 
     public string LogsDir => Path.Combine(DataDir, "logs");
 
-    public string SecretsFile => Path.Combine(DataDir, "secrets.dat");
-
     public static AppPaths Default()
     {
         var overridden = Environment.GetEnvironmentVariable("WDS_DATA_DIR");

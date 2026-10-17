@@ -258,7 +258,7 @@ internal sealed class TrayContext : ApplicationContext
             return;
         }
 
-        _host.Secrets.Set(pair.Pair.Id, dialog.Password);
+        _host.Secrets.Set(pair.Pair.Id, dialog.Password, pair.Pair.User);
         _host.Logger.LogInformation("Pair {Pair}: password stored from the tray", pair.Pair.Id);
         await pair.RestartAsync();
         Refresh();

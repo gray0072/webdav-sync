@@ -1,6 +1,6 @@
 namespace WebDavSync.App;
 
-/// <summary>Asks for an app password; it goes to <c>secrets.dat</c> (DPAPI, §15.1), never to settings or logs.</summary>
+/// <summary>Asks for an app password; it goes to the Windows Credential Manager (§15.1), never to settings or logs.</summary>
 internal sealed class PasswordForm : Form
 {
     private readonly TextBox _password = new() { UseSystemPasswordChar = true, Width = 360 };

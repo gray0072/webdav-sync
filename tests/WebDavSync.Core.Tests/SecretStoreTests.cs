@@ -2,44 +2,32 @@ using WebDavSync.Core.Config;
 
 namespace WebDavSync.Core.Tests;
 
+/// <summary>Credential Manager store (§15.1); uses its own target prefix and removes what it wrote.</summary>
 public sealed class SecretStoreTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "wds-secrets-" + Guid.NewGuid().ToString("N"));
+    private readonly SecretStore _store = new("WebDavSync-test-" + Guid.NewGuid().ToString("N")[..8]);
 
     public void Dispose()
     {
-        if (Directory.Exists(_dir))
-        {
-            Directory.Delete(_dir, recursive: true);
-        }
+        _store.Remove("pair-a");
+        _store.Remove("pair-b");
     }
 
     [Fact]
-    public void Stores_passwords_per_pair_encrypted()
+    public void Stores_reads_and_removes_passwords_per_pair()
     {
-        var path = Path.Combine(_dir, "secrets.dat");
-        var store = new SecretStore(path);
-        store.Set("pair-a", "s3cret pässword");
-        store.Set("pair-b", "other");
+        _store.Set("pair-a", "s3cret pässword", "user@example.org");
+        _store.Set("pair-b", "other");
 
-        Assert.Equal("s3cret pässword", new SecretStore(path).Get("PAIR-A"));
-        Assert.Equal("other", store.Get("pair-b"));
-        Assert.Null(store.Get("pair-c"));
-        Assert.DoesNotContain("s3cret", File.ReadAllText(path), StringComparison.Ordinal);
+        Assert.Equal("s3cret pässword", _store.Get("PAIR-A"));
+        Assert.Equal("other", _store.Get("pair-b"));
+        Assert.Null(_store.Get("pair-c"));
 
-        Assert.True(store.Remove("pair-a"));
-        Assert.Null(store.Get("pair-a"));
-        Assert.False(store.Remove("pair-a"));
-    }
+        _store.Set("pair-a", "changed");
+        Assert.Equal("changed", _store.Get("pair-a"));
 
-    [Fact]
-    public void A_blob_of_another_pair_does_not_decrypt()
-    {
-        var path = Path.Combine(_dir, "secrets.dat");
-        var store = new SecretStore(path);
-        store.Set("pair-a", "secret");
-        File.WriteAllText(path, File.ReadAllText(path).Replace("pair-a", "pair-x", StringComparison.Ordinal));
-
-        Assert.Throws<InvalidDataException>(() => store.Get("pair-x"));
+        Assert.True(_store.Remove("pair-a"));
+        Assert.Null(_store.Get("pair-a"));
+        Assert.False(_store.Remove("pair-a"));
     }
 }

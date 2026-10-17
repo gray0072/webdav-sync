@@ -61,7 +61,7 @@ Sync state ([§15.2](15-config-storage.md)):
     (base older than reality is safe: it only causes extra comparisons); mass-delete guard still applies.
 41. Synced folder moved to another path/volume → confirm, discard FileIds, rescan.
 42. `state.db` corrupted or locked by another process (antivirus, backup tool) → stop, offer restore from `backup\`.
-43. App folder moved/copied → `data\` moves with it; `secrets.dat` unreadable under another Windows user → ask for password.
+43. App folder moved/copied → `data\` moves with it; the password is not in that user's/machine's Credential Manager → ask for password.
 
 Selective sync ([§12.2](12-filters.md)):
 

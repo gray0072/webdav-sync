@@ -588,7 +588,7 @@ internal static class Commands
     {
         var setPair = new Argument<string>("pair") { Description = "Pair name or id." };
         var fromEnv = new Option<bool>("--from-env") { Description = $"Take the password from {CliContext.PasswordVariable} instead of asking." };
-        var set = new Command("set", "Store the pair's app password in data\\secrets.dat, encrypted for this Windows user (DPAPI, §15.1).") { setPair, fromEnv };
+        var set = new Command("set", "Store the pair's app password in the Windows Credential Manager (this user, this machine; §15.1).") { setPair, fromEnv };
         set.SetAction((parse, _) => Run(parse.GetValue(dataDir), "secret set", ctx =>
         {
             var pair = ctx.RequirePair(parse.GetValue(setPair)!);
@@ -600,9 +600,9 @@ internal static class Commands
                 throw new CliException("Empty password: nothing stored.");
             }
 
-            ctx.Secrets.Set(pair.Id, password);
-            ctx.Logger.LogInformationSafe("Pair {Pair}: password stored in secrets.dat", pair.Id);
-            Console.WriteLine($"Password of pair '{pair.Name}' stored in {ctx.Paths.SecretsFile} (DPAPI, this Windows user only).");
+            ctx.Secrets.Set(pair.Id, password, pair.User);
+            ctx.Logger.LogInformationSafe("Pair {Pair}: password stored in the Credential Manager", pair.Id);
+            Console.WriteLine($"Password of pair '{pair.Name}' stored in the Windows Credential Manager as '{ctx.Secrets.Target(pair.Id)}'.");
             return Task.FromResult(0);
         }));
 
@@ -615,7 +615,7 @@ internal static class Commands
             return Task.FromResult(0);
         }));
 
-        return new Command("secret", "Stored app passwords (secrets.dat).") { set, remove };
+        return new Command("secret", "Stored app passwords (Windows Credential Manager).") { set, remove };
     }
 
     private static string ReadHidden(string prompt)
@@ -666,7 +666,7 @@ internal static class Commands
             Console.WriteLine($"Base entries: {store.BaseCount}; initial sync done: {store.InitialSyncDone}; open conflicts: {store.OpenConflictCount}");
             Console.WriteLine($"Last cycle: {store.GetMeta(MetaKeys.LastCycle) ?? "-"}");
             Console.WriteLine($"Legacy import: {store.GetMeta(MetaKeys.LegacyImport) ?? "-"}");
-            Console.WriteLine($"Password: {(ctx.Secrets.Get(pair.Id) is not null ? "stored in secrets.dat" : Environment.GetEnvironmentVariable(CliContext.PasswordVariable) is { Length: > 0 } ? CliContext.PasswordVariable : "missing")}");
+            Console.WriteLine($"Password: {(ctx.Secrets.Get(pair.Id) is not null ? "stored in the Credential Manager" : Environment.GetEnvironmentVariable(CliContext.PasswordVariable) is { Length: > 0 } ? CliContext.PasswordVariable : "missing")}");
             return Task.FromResult(0);
         }));
         return command;
