@@ -184,8 +184,22 @@ public sealed class WebDavClient : IRemoteStore, IDisposable
             HttpCompletionOption.ResponseHeadersRead,
             ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, path, ct).ConfigureAwait(false);
+
+        // 206 starts at the requested offset; a 200 is the whole file (the server ignored the range).
+        var start = 0L;
+        if (offset > 0 && response.StatusCode == HttpStatusCode.PartialContent)
+        {
+            if (response.Content.Headers.ContentRange?.From != offset)
+            {
+                response.Dispose();
+                throw new RemoteException(RemoteErrorKind.Transient, $"GET '{path}': 206 with an unexpected Content-Range.");
+            }
+
+            start = offset;
+        }
+
         var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        return new RemoteDownload(stream, response.Content.Headers.ContentLength, PropfindParser.NormalizeETag(response.Headers.ETag?.Tag), response);
+        return new RemoteDownload(stream, response.Content.Headers.ContentLength, PropfindParser.NormalizeETag(response.Headers.ETag?.Tag), response, start);
     }
 
     public Task PutAsync(string path, Stream content, long length, DateTime? mtimeUtc, CancellationToken ct) =>

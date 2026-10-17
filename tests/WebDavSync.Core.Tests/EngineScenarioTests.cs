@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using WebDavSync.Core.Config;
 using WebDavSync.Core.Engine;
 using WebDavSync.Core.Execution;
+using WebDavSync.Core.Local;
 using WebDavSync.Core.Model;
 using WebDavSync.Core.Planning;
 using WebDavSync.Core.State;
@@ -354,6 +355,49 @@ public sealed class EngineScenarioTests : IDisposable
         await AssertUpToDateAsync();
         using var check = SyncEngine.Open(_pair, _remote, NullLogger.Instance);
         Assert.Empty(check.Store.LoadHeld());
+    }
+
+    private static readonly string Big = string.Concat(Enumerable.Range(0, 30_000).Select(i => (i % 10007).ToString("D5")));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Download_dropped_mid_body_is_retried_from_where_it_stopped(bool serverIgnoresRange)
+    {
+        _remote.AddFile("/test/big.bin", Big);
+        var drops = 0;
+        _remote.DownloadDrop = path => path.EndsWith("big.bin", StringComparison.Ordinal) && drops++ == 0 ? 40_000 : null;
+        _remote.IgnoreRange = serverIgnoresRange;
+
+        var (_, result) = await SyncAsync();
+
+        Assert.True(result.AllDone, string.Join("; ", result.Results.Select(r => r.Message)));
+        Assert.Equal(Big, File.ReadAllText(_local.Full("big.bin")));
+        Assert.Equal([0L, 40_000L], _remote.GetOffsets);
+        Assert.Empty(Directory.GetFiles(new StatePaths(_local.Path).TmpDir));
+        await AssertUpToDateAsync();
+    }
+
+    [Fact]
+    public async Task Download_part_from_an_earlier_run_is_resumed_and_stale_parts_are_cleaned()
+    {
+        _remote.AddFile("/test/big.bin", Big);
+        var item = (await _remote.StatAsync("/test/big.bin", TestContext.Current.CancellationToken))!;
+        var state = new StatePaths(_local.Path);
+        var part = LocalFs.ResumablePartPath(state, "big.bin", item.Size, item.ETag!);
+        File.WriteAllText(part, Big[..50_000]);
+        var oldPart = LocalFs.ResumablePartPath(state, "gone.bin", 1, "x");
+        File.WriteAllText(oldPart, "old");
+        File.SetLastWriteTimeUtc(oldPart, DateTime.UtcNow - LocalFs.ResumableMaxAge - TimeSpan.FromHours(1));
+        var opPart = LocalFs.NewTempPath(state, "someop");
+        File.WriteAllText(opPart, "per-op");
+
+        var (_, result) = await SyncAsync();
+
+        Assert.True(result.AllDone);
+        Assert.Equal(Big, File.ReadAllText(_local.Full("big.bin")));
+        Assert.Equal([50_000L], _remote.GetOffsets);
+        Assert.Empty(Directory.GetFiles(state.TmpDir));
     }
 
     [Fact]

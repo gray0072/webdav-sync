@@ -111,6 +111,16 @@ public sealed class ContentHasher : IDisposable
         _length += data.Length;
     }
 
+    /// <summary>Starts over, e.g. when a resumed download restarts from the beginning.</summary>
+    public void Reset()
+    {
+        ObjectDisposedException.ThrowIf(_finished, this);
+        _sha1.GetHashAndReset();
+        _sha1.AppendData(Prefix);
+        Array.Clear(_small);
+        _length = 0;
+    }
+
     public ContentHash Finish()
     {
         ObjectDisposedException.ThrowIf(_finished, this);

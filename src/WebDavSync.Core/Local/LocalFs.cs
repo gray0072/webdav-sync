@@ -76,6 +76,25 @@ public static class LocalFs
         return Path.Combine(state.TmpDir, opId + ".part");
     }
 
+    /// <summary>Prefix of resumable download parts (§6.6); other <c>.part</c> files are per op.</summary>
+    public const string ResumablePrefix = "dl-";
+
+    /// <summary>How long a resumable part is kept for a later attempt.</summary>
+    public static readonly TimeSpan ResumableMaxAge = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// Temp file of a download that can be resumed with <c>Range</c> (§6.6): named after the remote path and version, so a
+    /// retry, a later cycle or a restart finds it, and a new remote version never continues an old part.
+    /// </summary>
+    public static string ResumablePartPath(StatePaths state, string remotePath, long size, string version)
+    {
+        Directory.CreateDirectory(state.TmpDir);
+        var id = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"{PathKey.FromPath(remotePath)}|{size}|{version}")))[..24];
+        return Path.Combine(state.TmpDir, ResumablePrefix + id + ".part");
+    }
+
+    /// <summary>On engine start: deletes per-op parts and resumable parts older than <see cref="ResumableMaxAge"/>.</summary>
     public static void CleanTemp(StatePaths state)
     {
         if (!Directory.Exists(state.TmpDir))
@@ -85,7 +104,11 @@ public static class LocalFs
 
         foreach (var file in Directory.EnumerateFiles(state.TmpDir, "*.part"))
         {
-            TryDelete(file);
+            if (!Path.GetFileName(file).StartsWith(ResumablePrefix, StringComparison.Ordinal) ||
+                DateTime.UtcNow - File.GetLastWriteTimeUtc(file) > ResumableMaxAge)
+            {
+                TryDelete(file);
+            }
         }
     }
 

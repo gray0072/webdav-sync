@@ -77,9 +77,12 @@ public sealed record RemoteItem(
 /// <summary>A Depth: 1 listing. <see cref="Complete"/> is the "complete listing" definition of §6.8.</summary>
 public sealed record RemoteListing(RemoteItem Self, IReadOnlyList<RemoteItem> Children, bool Complete, IReadOnlyList<string> Problems);
 
-public sealed class RemoteDownload(Stream content, long? length, string? etag, IDisposable? owner) : IAsyncDisposable
+/// <param name="offset">Where <paramref name="content"/> starts: the requested offset, or 0 when the server ignored the range.</param>
+public sealed class RemoteDownload(Stream content, long? length, string? etag, IDisposable? owner, long offset = 0) : IAsyncDisposable
 {
     public Stream Content { get; } = content;
+
+    public long Offset { get; } = offset;
 
     public long? Length { get; } = length;
 
@@ -102,6 +105,7 @@ public interface IRemoteStore
     /// <summary>Depth: 0. Returns null when the item does not exist.</summary>
     Task<RemoteItem?> StatAsync(string path, CancellationToken ct);
 
+    /// <summary>GET from <paramref name="offset"/> (a <c>Range</c> request); check <see cref="RemoteDownload.Offset"/>.</summary>
     Task<RemoteDownload> GetAsync(string path, long offset, CancellationToken ct);
 
     Task PutAsync(string path, Stream content, long length, DateTime? mtimeUtc, CancellationToken ct);

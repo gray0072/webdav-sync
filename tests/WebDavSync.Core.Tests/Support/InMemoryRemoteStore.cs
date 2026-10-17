@@ -15,6 +15,15 @@ internal sealed class InMemoryRemoteStore : IRemoteStore
     /// <summary>Fault injection: return an exception to throw for a listing of the given path.</summary>
     public Func<string, Exception?>? ListFault { get; set; }
 
+    /// <summary>Fault injection: for a GET of the given path, the number of bytes after which the connection drops.</summary>
+    public Func<string, long?>? DownloadDrop { get; set; }
+
+    /// <summary>Answer ranged GETs with the whole file (200), like a server without range support.</summary>
+    public bool IgnoreRange { get; set; }
+
+    /// <summary>Offsets requested by GETs, in order.</summary>
+    public List<long> GetOffsets { get; } = [];
+
     public int Requests { get; private set; }
 
     public void AddDir(string path)
@@ -84,7 +93,15 @@ internal sealed class InMemoryRemoteStore : IRemoteStore
             throw new RemoteException(RemoteErrorKind.NotFound, $"{path} not found", HttpStatusCode.NotFound);
         }
 
-        return Task.FromResult(new RemoteDownload(new MemoryStream(item.Content[(int)offset..]), item.Content.Length - offset, item.ETag, null));
+        GetOffsets.Add(offset);
+        var start = IgnoreRange ? 0 : offset;
+        Stream content = new MemoryStream(item.Content[(int)start..]);
+        if (DownloadDrop?.Invoke(Norm(path)) is { } drop)
+        {
+            content = new DroppingStream(content, drop);
+        }
+
+        return Task.FromResult(new RemoteDownload(content, item.Content.Length - start, item.ETag, null, start));
     }
 
     public async Task PutAsync(string path, Stream content, long length, DateTime? mtimeUtc, CancellationToken ct)
@@ -198,4 +215,52 @@ internal sealed class InMemoryRemoteStore : IRemoteStore
     private string NextETag() => "e" + (++_etag).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private sealed record Item(string Path, bool IsDir, byte[] Content, DateTime Mtime, string ETag);
+}
+
+/// <summary>Reads like the inner stream, then fails as a dropped connection after <c>limit</c> bytes.</summary>
+internal sealed class DroppingStream(Stream inner, long limit) : Stream
+{
+    private long _read;
+
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position { get => _read; set => throw new NotSupportedException(); }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        if (_read >= limit)
+        {
+            throw new IOException("The response ended prematurely (simulated).");
+        }
+
+        var n = inner.Read(buffer, offset, (int)Math.Min(count, limit - _read));
+        _read += n;
+        return n;
+    }
+
+    public override void Flush()
+    {
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            inner.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
 }

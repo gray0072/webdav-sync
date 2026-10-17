@@ -40,7 +40,7 @@ Acceptance:
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 195 unit + 6 integration, all green (`dotnet test`).
+- Tests: 199 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
 
@@ -102,8 +102,11 @@ diagnostics export, `secrets.dat` (prototype reads the password from the environ
 
 ## 19.8 Known gaps in the prototype (next milestones)
 
-- Content reuse instead of download ([§6.3](06-sync-algorithm.md)); `Range` resume of downloads ([§6.6](06-sync-algorithm.md)).
-- Journal re-validation of interrupted ops ([§6.7](06-sync-algorithm.md)) — currently re-planned from scratch.
+- Content reuse instead of download ([§6.3](06-sync-algorithm.md)).
+- Journal re-validation of interrupted ops without a remote hash ([§6.7](06-sync-algorithm.md)) — re-planned
+  (`Compare`); with a remote hash (Mail.ru) re-planning already finds finished transfers.
+- Resumable uploads: plain WebDAV has no partial `PUT`; a dropped upload restarts from zero.
+- `Range` support of Mail.ru is not verified on the real server (a `200` falls back to a full download).
 - Parallel transfers, bandwidth limits, adaptive backoff on 429/503 ([§11](11-bandwidth-pause.md)).
 - Remote names invalid on the remote side (probe-defined, [§13](13-edge-cases.md) #3), max file size (#8), remote URL length (#4).
 - Two remote names differing only in case are skipped with a warning, not renamed locally ([§13](13-edge-cases.md) #1).
@@ -177,6 +180,7 @@ Next, in order:
    `ApproveAll` with `maxOpsPerCycle = 20`, so real cycles need no `--mode` / `--max-ops`.
 2. ~~Held list and "approve and remember" rules~~ — done 2026-10-17 (§10): `--hold`, `[h]old` at the prompt,
    `wds held`, `wds rule`. Not done: an "approve and remember" answer at the prompt (rules are added with `wds rule add`).
-3. Large files: `Range` resume of downloads, journal re-validation of interrupted ops (§6.6, §6.7).
+3. ~~Large files~~ — done 2026-10-17: `Range` resume of downloads, a dropped or stalled `GET` body is retried
+   (§6.6, §4.5); journal re-validation is covered by re-planning with the remote hash (§6.7).
 4. Crawl time (~7 min per cycle, Mail.ru has no folder etags): parallel PROPFINDs within the request limit.
 5. Tray app milestone (§14): watcher, scheduler, `secrets.dat` (DPAPI) instead of `WDS_PASSWORD`.

@@ -97,7 +97,7 @@ Mail.ru quirks seen so far (all handled):
 
 | Class | Statuses / conditions | Handling |
 |---|---|---|
-| Transient | 408, 423, 429, 5xx except 507, request timeout, malformed XML, connection lost after part of a `PUT` body was sent | Metadata requests (PROPFIND, GET, MKCOL): up to 4 attempts in the client. Ops: up to 3 attempts in the executor. Backoff `4^(n-1)` s with ±20 % jitter, capped at 5 min; `Retry-After` wins. Then the op fails for this cycle. |
+| Transient | 408, 423, 429, 5xx except 507, request timeout, malformed XML, connection lost after part of a `PUT` body was sent, connection lost or stalled (no data for 2 min) while reading a `GET` body (the download resumes, §6.6) | Metadata requests (PROPFIND, GET, MKCOL): up to 4 attempts in the client. Ops: up to 3 attempts in the executor. Backoff `4^(n-1)` s with ±20 % jitter, capped at 5 min; `Retry-After` wins. Then the op fails for this cycle. |
 | Permanent | other 4xx (incl. 403) | No retry; op fails, goes to the error list. |
 | Auth | 401 | No retry; the cycle stops; the pair needs a new password (§13 #25). |
 | Quota | 507 | No retry; uploads stop for the rest of the cycle, downloads continue (§13 #26). |

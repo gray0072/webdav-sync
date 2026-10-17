@@ -34,7 +34,7 @@ data\
   state.db             SQLite (WAL): base tree, journal, conflicts, held, meta
   state.db-wal, -shm   SQLite WAL files
   backup\              daily copies of state.db (keep 3), via SQLite online backup API
-  tmp\                 partial downloads (same volume → atomic move into place)
+  tmp\                 partial downloads (same volume → atomic move into place); dl-*.part are resumable (§6.6)
   trash\<date>\        fallback when the Recycle Bin cannot take an item (§9)
   engine.lock          held while an engine runs this pair
 ```

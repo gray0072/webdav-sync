@@ -128,7 +128,13 @@ side → rename on the other side via a temp name. A difference only in Unicode 
   remote provides it, and the response etag) → set mtime (§4.6) → re-check that the local target did not change
   → old version to the Recycle Bin (`KeepOverwrittenVersions`) → atomic `File.Move(overwrite)`.
   A local change in the meantime → op skipped, re-planned (becomes a conflict next cycle).
-  Resume interrupted downloads with `Range`: not in the prototype.
+  **Resume**: when the remote version is identified (etag, or content hash), a `Download` writes to
+  `tmp\dl-<hash of remote path + size + version>.part` instead of a per-op file. A lost connection (read error) or a
+  stall (no data for 2 min) is Transient ([§4.5](04-remote-webdav.md)) and keeps the part; the retry, a later cycle
+  or a restart continues it with `Range: bytes=<part length>-` after hashing the part. A `206` must start at the
+  requested offset; a `200` (range ignored) restarts from zero. A changed etag in the response, a size or hash
+  mismatch deletes the part. A new remote version has another part name, so an old part is never continued; parts
+  older than 7 days are deleted on start. Compare and conflict downloads are not resumable (per-op temp files).
 - **Upload**: stream the file with `FileShare.ReadWrite | Delete`, hashing while reading; after `PUT`, PROPFIND
   the target to verify size (and hash if exposed); if local changed during upload → op skipped, re-queued.
   `PUT` sends `X-OC-Mtime` (§4.6).
@@ -146,9 +152,11 @@ side → rename on the other side via a temp name. A difference only in Unicode 
   in batches without journal rows.
 - On start, ops left `running` are marked `interrupted`; the next cycle re-plans from the actual L/R state.
   This is safe because the base is updated only after an op is verified done: an interrupted upload or download
-  shows up as a change (or a conflict) and is redone. Re-validating individual journal entries (e.g. "upload is
-  done if the remote already has the expected size/hash") is a later optimization.
-- Temp files in `tmp\` are deleted on start.
+  shows up as a change (or a conflict) and is redone. With a remote content hash (Mail.ru, §4.4) this already is
+  the journal re-validation: an upload or download that finished but was not recorded shows equal hashes on both
+  sides and becomes an `UpdateBase`, no transfer. Without a remote hash it becomes a `Compare` (download to compare);
+  re-validating such journal entries by size + mtime is a later optimization.
+- Per-op temp files in `tmp\` are deleted on start; resumable download parts are kept for 7 days (§6.6).
 
 ## 6.8 Complete listing and "known absent" (invariant #1)
 

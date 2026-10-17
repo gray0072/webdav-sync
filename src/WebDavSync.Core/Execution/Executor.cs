@@ -25,6 +25,9 @@ public sealed class ExecutorContext
     public required ILogger Logger { get; init; }
 
     public int MaxAttempts { get; init; } = 3;
+
+    /// <summary>A download that receives no data for this long is dropped and retried (resuming, §6.6).</summary>
+    public TimeSpan DownloadStallTimeout { get; init; } = TimeSpan.FromMinutes(2);
 }
 
 public sealed record OpResult(SyncOp Op, JournalStatus Status, string? Message);
@@ -261,21 +264,71 @@ public sealed class Executor(ExecutorContext ctx)
     private static BaseEntry Entry(string key, LocalEntry local, RemoteEntry remote, ContentHash? hash) =>
         BaseEntry.From(key, local with { Key = key }, remote with { Key = key }, hash, DateTime.UtcNow);
 
-    private async Task<ContentHash> DownloadToTempAsync(string remoteRelative, string temp, RemoteEntry expected, CancellationToken ct)
+    /// <summary>
+    /// Downloads into <paramref name="temp"/> and verifies size and hash (§6.6). With <paramref name="resume"/>, an existing
+    /// part is continued with a <c>Range</c> request; a lost or stalled connection leaves the part for the retry.
+    /// </summary>
+    private async Task<ContentHash> DownloadToTempAsync(string remoteRelative, string temp, RemoteEntry expected, CancellationToken ct, bool resume = false)
     {
         using var hasher = new ContentHasher();
-        await using (var download = await ctx.Remote.GetAsync(RemoteFull(remoteRelative), 0, ct).ConfigureAwait(false))
+        var offset = resume && File.Exists(temp) ? new FileInfo(temp).Length : 0;
+        if (offset >= expected.Size)
+        {
+            offset = 0;
+        }
+
+        if (offset > 0)
+        {
+            await using var part = new FileStream(temp, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var partBuffer = new byte[81920];
+            int partRead;
+            while ((partRead = await part.ReadAsync(partBuffer, ct).ConfigureAwait(false)) > 0)
+            {
+                hasher.Append(partBuffer.AsSpan(0, partRead));
+            }
+        }
+
+        await using (var download = await ctx.Remote.GetAsync(RemoteFull(remoteRelative), offset, ct).ConfigureAwait(false))
         {
             if (download.ETag is not null && expected.ETag is not null && download.ETag != expected.ETag)
             {
+                LocalFs.TryDelete(temp);
                 throw new RemoteException(RemoteErrorKind.Transient, $"'{remoteRelative}' changed during download (etag).");
             }
 
-            await using var file = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
-            var buffer = new byte[81920];
-            int read;
-            while ((read = await download.Content.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+            if (offset > 0 && download.Offset == offset)
             {
+                ctx.Logger.LogInformation("Resuming download of {Path} at {Offset} of {Size} bytes", remoteRelative, offset, expected.Size);
+            }
+            else if (offset > 0)
+            {
+                ctx.Logger.LogInformation("Server ignored the range for {Path}; downloading from the start", remoteRelative);
+                hasher.Reset();
+            }
+
+            await using var file = new FileStream(temp, download.Offset > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
+            var buffer = new byte[81920];
+            using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            while (true)
+            {
+                int read;
+                stall.CancelAfter(ctx.DownloadStallTimeout);
+                try
+                {
+                    read = await download.Content.ReadAsync(buffer, stall.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or OperationCanceledException && !ct.IsCancellationRequested)
+                {
+                    // Lost or stalled connection: retryable; the part stays for a resumable download.
+                    var what = ex is OperationCanceledException ? $"no data for {ctx.DownloadStallTimeout.TotalSeconds:0} s" : "connection lost";
+                    throw new RemoteException(RemoteErrorKind.Transient, $"'{remoteRelative}': {what} after {hasher.Length} of {expected.Size} bytes.", inner: ex);
+                }
+
+                if (read == 0)
+                {
+                    break;
+                }
+
                 hasher.Append(buffer.AsSpan(0, read));
                 await file.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
             }
@@ -436,10 +489,26 @@ public sealed class Executor(ExecutorContext ctx)
 
         var target = LocalFull(localPath);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        var temp = LocalFs.NewTempPath(ctx.State, opId);
+
+        // Resumable when the remote version is identified by an etag or a content hash (§6.6).
+        var version = remoteNow!.ETag ?? remoteNow.Hash?.Hex;
+        var temp = version is null
+            ? LocalFs.NewTempPath(ctx.State, opId)
+            : LocalFs.ResumablePartPath(ctx.State, op.RemotePath!, remoteNow.Size, version);
+        var keepPart = false;
         try
         {
-            var hash = await DownloadToTempAsync(op.RemotePath!, temp, remoteNow!, ct).ConfigureAwait(false);
+            ContentHash hash;
+            try
+            {
+                hash = await DownloadToTempAsync(op.RemotePath!, temp, remoteNow, ct, resume: version is not null).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (version is not null && (ex is OperationCanceledException || (ex is RemoteException r && r.Kind is RemoteErrorKind.Transient or RemoteErrorKind.Offline)))
+            {
+                keepPart = true;
+                throw;
+            }
+
             var current = StatLocal(localPath);
             if (op.Overwrite ? !LocalFs.SameFile(current, local) : current is not null)
             {
@@ -453,11 +522,14 @@ public sealed class Executor(ExecutorContext ctx)
 
             File.Move(temp, target, overwrite: true);
             var after = StatLocal(localPath)!;
-            return new UpsertBase(Entry(op.Key, after with { Hash = hash }, remoteNow!, hash));
+            return new UpsertBase(Entry(op.Key, after with { Hash = hash }, remoteNow, hash));
         }
         finally
         {
-            LocalFs.TryDelete(temp);
+            if (!keepPart)
+            {
+                LocalFs.TryDelete(temp);
+            }
         }
     }
 

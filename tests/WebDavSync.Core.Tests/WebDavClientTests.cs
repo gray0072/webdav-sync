@@ -193,6 +193,40 @@ public sealed class WebDavClientTests
     }
 
     [Fact]
+    public async Task Ranged_get_reports_where_the_content_starts()
+    {
+        RangeHeaderValue? requested = null;
+        using var partial = Client(request =>
+        {
+            requested = request.Headers.Range;
+            var content = new ByteArrayContent(new byte[60]);
+            content.Headers.ContentRange = new ContentRangeHeaderValue(40, 99, 100);
+            return new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = content };
+        });
+        await using (var download = await partial.GetAsync("/big.bin", 40, CancellationToken.None))
+        {
+            Assert.Equal(40, download.Offset);
+        }
+
+        Assert.Equal(40, Assert.Single(requested!.Ranges).From);
+
+        using var whole = Client(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[100]) });
+        await using (var download = await whole.GetAsync("/big.bin", 40, CancellationToken.None))
+        {
+            Assert.Equal(0, download.Offset);
+        }
+
+        using var wrong = Client(_ =>
+        {
+            var content = new ByteArrayContent(new byte[10]);
+            content.Headers.ContentRange = new ContentRangeHeaderValue(90, 99, 100);
+            return new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = content };
+        });
+        var ex = await Assert.ThrowsAsync<RemoteException>(() => wrong.GetAsync("/big.bin", 40, CancellationToken.None));
+        Assert.Equal(RemoteErrorKind.Transient, ex.Kind);
+    }
+
+    [Fact]
     public async Task Not_found_stat_returns_null()
     {
         using var client = Client(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
