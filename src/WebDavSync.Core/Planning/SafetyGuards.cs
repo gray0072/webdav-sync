@@ -84,6 +84,15 @@ public static class Approval
     };
 
     /// <summary>
+    /// Same, with union mode and "approve and remember" rules (§10): union-mode plans are always shown in full
+    /// (§7.2), otherwise ops matched by a rule are approved.
+    /// </summary>
+    public static IReadOnlyList<SyncOp> NeedingApproval(Plan plan, SyncMode mode, bool unionMode, IReadOnlyList<AutoApproveRule> rules) =>
+        unionMode
+            ? mode == SyncMode.DryRun ? NeedingApproval(plan, mode) : plan.ActionOps.ToList()
+            : NeedingApproval(plan, mode).Where(o => !rules.Any(r => r.Matches(o))).ToList();
+
+    /// <summary>
     /// Ops to execute, in plan order. Stops at the first early (phase-0) op that is not approved, because later
     /// ops were planned on the state after it. <paramref name="maxOps"/> counts action ops only (§10 <c>MaxOpsPerCycle</c>);
     /// base-only ops after the cut are dropped too.

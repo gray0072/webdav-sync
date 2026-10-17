@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 using WebDavSync.Core.Model;
+using WebDavSync.Core.Planning;
 
 namespace WebDavSync.Core.State;
 
@@ -38,7 +39,7 @@ public static class MetaKeys
 /// <summary><c>state.db</c> (§15.3): SQLite in WAL mode, raw SQL.</summary>
 public sealed class StateStore : IDisposable
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
 
     private const string Schema = """
         CREATE TABLE IF NOT EXISTS items(
@@ -76,9 +77,13 @@ public sealed class StateStore : IDisposable
             detected_at INTEGER NOT NULL,
             resolved_at INTEGER NULL);
         CREATE TABLE IF NOT EXISTS held(
-            key TEXT PRIMARY KEY,
+            key TEXT NOT NULL,
+            type TEXT NOT NULL,
+            path TEXT NOT NULL,
             reason TEXT NOT NULL,
-            held_at INTEGER NOT NULL);
+            state TEXT NOT NULL,
+            held_at INTEGER NOT NULL,
+            PRIMARY KEY(key, type));
         CREATE TABLE IF NOT EXISTS meta(
             key TEXT PRIMARY KEY,
             value TEXT NULL);
@@ -105,6 +110,13 @@ public sealed class StateStore : IDisposable
             if (!string.Equals(check, "ok", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidDataException($"state.db integrity check failed: {check}. Restore from backup\\ or reset the pair state.");
+            }
+
+            // Schema 1 had an unused held(key, reason, held_at) table.
+            if (store.Scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'meta'") is > 0L &&
+                store.GetMeta(MetaKeys.SchemaVersion) == "1")
+            {
+                store.Exec("DROP TABLE IF EXISTS held;");
             }
 
             store.Exec(Schema);
@@ -238,6 +250,53 @@ public sealed class StateStore : IDisposable
     }
 
     public int OpenConflictCount => Convert.ToInt32(Scalar("SELECT COUNT(*) FROM conflicts WHERE resolved_at IS NULL"), CultureInfo.InvariantCulture);
+
+    // ---------------------------------------------------------------- held list (§10)
+
+    public List<HeldItem> LoadHeld()
+    {
+        using var cmd = Command("SELECT key, type, path, reason, state, held_at FROM held ORDER BY key, type");
+        using var reader = cmd.ExecuteReader();
+        var result = new List<HeldItem>();
+        while (reader.Read())
+        {
+            if (Enum.TryParse<OpType>(reader.GetString(1), out var type))
+            {
+                result.Add(new HeldItem(reader.GetString(0), type, reader.GetString(2), reader.GetString(3), reader.GetString(4),
+                    new DateTime(reader.GetInt64(5), DateTimeKind.Utc)));
+            }
+        }
+
+        return result;
+    }
+
+    public void Hold(IEnumerable<HeldItem> items)
+    {
+        using var tx = _db.BeginTransaction();
+        foreach (var h in items)
+        {
+            using var cmd = Command("INSERT OR REPLACE INTO held(key, type, path, reason, state, held_at) VALUES($k, $t, $p, $r, $s, $at)", tx,
+                ("$k", h.Key), ("$t", h.Type.ToString()), ("$p", h.DisplayPath), ("$r", h.Reason), ("$s", h.State), ("$at", h.HeldAtUtc.ToUniversalTime().Ticks));
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
+    /// <summary>Releases the given items; returns how many were held.</summary>
+    public int Release(IEnumerable<HeldItem> items)
+    {
+        using var tx = _db.BeginTransaction();
+        var count = 0;
+        foreach (var h in items)
+        {
+            using var cmd = Command("DELETE FROM held WHERE key = $k AND type = $t", tx, ("$k", h.Key), ("$t", h.Type.ToString()));
+            count += cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return count;
+    }
 
     /// <summary>Daily copy via the SQLite online backup API, keeping the newest <paramref name="keep"/> (§15.2).</summary>
     public void BackupDaily(string backupDir, int keep = 3)

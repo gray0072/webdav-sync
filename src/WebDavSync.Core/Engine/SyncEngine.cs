@@ -24,7 +24,21 @@ public sealed record CyclePlan(
     bool UnionMode,
     bool CreateRemoteRoot,
     bool CreateRemoteMarker,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes)
+{
+    /// <summary>Ops left out of <see cref="Plan"/> by the held list (§10).</summary>
+    public IReadOnlyList<SyncOp> Held { get; init; } = [];
+}
+
+/// <summary>Per-cycle user input for planning.</summary>
+public sealed record PlanOptions
+{
+    /// <summary>One-off "keep local / keep remote" choices by key (§6.4), see <see cref="PlannerSettings.KeepSide"/>.</summary>
+    public IReadOnlyDictionary<string, Side> KeepSide { get; init; } = new Dictionary<string, Side>();
+
+    /// <summary>Keys whose ops (whole subtree) are put into the held list before guards and approval (§10).</summary>
+    public IReadOnlyCollection<string> Hold { get; init; } = [];
+}
 
 /// <summary>
 /// One pair, one cycle at a time (§6.1): lock → root sanity → crawl + scan → plan → guards; the caller approves,
@@ -117,7 +131,10 @@ public sealed class SyncEngine : IDisposable
         PlanAsync(new Dictionary<string, Side>(), status, ct);
 
     /// <param name="keepSide">One-off "keep local / keep remote" choices by key (§6.4), see <see cref="PlannerSettings.KeepSide"/>.</param>
-    public async Task<CyclePlan> PlanAsync(IReadOnlyDictionary<string, Side> keepSide, IProgress<string>? status = null, CancellationToken ct = default)
+    public Task<CyclePlan> PlanAsync(IReadOnlyDictionary<string, Side> keepSide, IProgress<string>? status = null, CancellationToken ct = default) =>
+        PlanAsync(new PlanOptions { KeepSide = keepSide }, status, ct);
+
+    public async Task<CyclePlan> PlanAsync(PlanOptions options, IProgress<string>? status = null, CancellationToken ct = default)
     {
         var cycleId = Guid.NewGuid().ToString("N")[..12];
         var notes = new List<string>();
@@ -210,8 +227,9 @@ public sealed class SyncEngine : IDisposable
             ImportedBaseMatch = Pair.ImportedBaseMatch,
             MaxCompareDownloadBytes = Pair.MaxCompareDownloadBytes,
             Filter = filter,
-            KeepSide = keepSide,
+            KeepSide = options.KeepSide,
         }));
+        (plan, var held) = ApplyHeldList(plan, options.Hold, local, remote, notes);
 
         RemoteQuota? quota = null;
         try
@@ -237,7 +255,61 @@ public sealed class SyncEngine : IDisposable
         _logger.LogInformation(
             "Cycle {Cycle}: plan {Ops} ops ({Actions} actions), {Warnings} warnings, guards: {Trips} trips, {Errors} errors",
             cycleId, plan.Ops.Count, plan.ActionOps.Count(), plan.Warnings.Count, guards.Trips.Count, guards.Errors.Count);
-        return new CyclePlan(cycleId, plan, guards, local, remote, baseEntries.Count, unionMode, createRoot, createMarker, notes);
+        return new CyclePlan(cycleId, plan, guards, local, remote, baseEntries.Count, unionMode, createRoot, createMarker, notes) { Held = held };
+    }
+
+    /// <summary>Puts ops into the held list (§10): they are not proposed again until their item changes on either side.</summary>
+    public IReadOnlyList<HeldItem> Hold(CyclePlan cycle, IEnumerable<SyncOp> ops)
+    {
+        var items = ops.Where(HeldList.CanHold).Select(o => HeldList.Hold(o, cycle.Local, cycle.Remote, DateTime.UtcNow)).ToList();
+        Store.Hold(items);
+        foreach (var item in items)
+        {
+            _logger.LogInformation("Held {Type} {Path} ({Reason})", item.Type, item.DisplayPath, item.Reason);
+        }
+
+        return items;
+    }
+
+    private (Plan Plan, IReadOnlyList<SyncOp> Held) ApplyHeldList(Plan plan, IReadOnlyCollection<string> hold, LocalSnapshot local, RemoteSnapshot remote, List<string> notes)
+    {
+        if (hold.Count > 0)
+        {
+            var now = DateTime.UtcNow;
+            var items = new List<HeldItem>();
+            foreach (var key in hold)
+            {
+                var ops = plan.ActionOps.Where(o => PathKey.IsSelfOrUnder(o.Key, key)).ToList();
+                items.AddRange(ops.Where(HeldList.CanHold).Select(o => HeldList.Hold(o, local, remote, now)));
+                if (ops.Any(o => !HeldList.CanHold(o)))
+                {
+                    notes.Add($"Hold '{key}': moves and renames cannot be held (the rest of the plan depends on them).");
+                }
+                else if (ops.Count == 0)
+                {
+                    notes.Add($"Hold '{key}': no op to hold.");
+                }
+            }
+
+            Store.Hold(items);
+        }
+
+        var result = HeldList.Apply(plan, Store.LoadHeld(), local, remote);
+
+        // An op can be missing because a folder was not listed: release only on complete snapshots.
+        if (result.Released.Count > 0 && local.IsComplete && remote.IsComplete)
+        {
+            Store.Release(result.Released);
+            notes.Add($"{result.Released.Count} held items changed or no longer need an op; they are released.");
+            _logger.LogInformation("Released {Count} held items: {Keys}", result.Released.Count, string.Join(", ", result.Released.Select(h => h.Key)));
+        }
+
+        if (result.Held.Count > 0)
+        {
+            notes.Add($"{result.Held.Count} ops are held (rejected earlier, item unchanged): 'wds held' lists them.");
+        }
+
+        return (result.Plan, result.Held);
     }
 
     public async Task<ExecutionResult> ExecuteAsync(CyclePlan cycle, IReadOnlyList<SyncOp> ops, IProgress<OpResult>? progress = null, CancellationToken ct = default)

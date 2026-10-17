@@ -185,6 +185,8 @@ internal static class Commands
                 ? value.ValueKind switch
                 {
                     System.Text.Json.JsonValueKind.String => value.GetString()!,
+                    System.Text.Json.JsonValueKind.Array when property.PropertyType == typeof(List<AutoApproveRule>) =>
+                        "[" + string.Join("; ", pair.AutoApprove) + "]",
                     System.Text.Json.JsonValueKind.Array => "[" + string.Join(", ", value.EnumerateArray().Select(v => v.ToString())) + "]",
                     _ => value.GetRawText(),
                 }
@@ -199,6 +201,12 @@ internal static class Commands
         new Option<string[]>("--keep-local") { Description = "File (relative path) whose local version overwrites the remote one if they differ; repeatable (§6.4)." },
         new Option<string[]>("--keep-remote") { Description = "File (relative path) whose remote version overwrites the local one if they differ; repeatable (§6.4)." }
     );
+
+    private static Option<string[]> HoldOption() =>
+        new("--hold") { Description = "Put the ops of this path (whole subtree) into the held list: not proposed again until the item changes; repeatable (§10)." };
+
+    private static List<string> Keys(ParseResult parse, Option<string[]> option) =>
+        (parse.GetValue(option) ?? []).Select(p => PathKey.FromPath(p.Replace('\\', '/').Trim('/'))).ToList();
 
     private static Dictionary<string, Side> KeepSide(ParseResult parse, Option<string[]> keepLocal, Option<string[]> keepRemote)
     {
@@ -349,14 +357,15 @@ internal static class Commands
         var pairArg = new Argument<string>("pair") { Description = "Pair name or id." };
         var full = new Option<bool>("--full") { Description = "List every op (default: first 25 per group)." };
         var (keepLocal, keepRemote) = KeepOptions();
-        var command = new Command("plan", "Print the three-way plan; nothing is executed.") { pairArg, full, keepLocal, keepRemote };
+        var hold = HoldOption();
+        var command = new Command("plan", "Print the three-way plan; nothing is executed (except --hold).") { pairArg, full, keepLocal, keepRemote, hold };
         command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "plan", async ctx =>
         {
             var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
             using var client = ctx.CreateClient(pair);
             using var engine = SyncEngine.Open(pair, client, ctx.Logger);
             var progress = new ConsoleProgress();
-            var cycle = await engine.PlanAsync(KeepSide(parse, keepLocal, keepRemote), progress, ct);
+            var cycle = await engine.PlanAsync(new PlanOptions { KeepSide = KeepSide(parse, keepLocal, keepRemote), Hold = Keys(parse, hold) }, progress, ct);
             progress.Done();
             PlanPrinter.Print(cycle, parse.GetValue(full));
             return cycle.Guards.HasErrors ? 3 : 0;
@@ -375,7 +384,8 @@ internal static class Commands
         var acceptGuards = new Option<bool>("--accept-guards") { Description = "Accept mass-delete / mass-overwrite guard trips without asking." };
         var full = new Option<bool>("--full") { Description = "List every op." };
         var (keepLocal, keepRemote) = KeepOptions();
-        var command = new Command("sync", "Plan, approve and execute one cycle.") { pairArg, once, dryRun, maxOps, mode, yes, acceptGuards, full, keepLocal, keepRemote };
+        var hold = HoldOption();
+        var command = new Command("sync", "Plan, approve and execute one cycle.") { pairArg, once, dryRun, maxOps, mode, yes, acceptGuards, full, keepLocal, keepRemote, hold };
         command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "sync", async ctx =>
         {
             var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
@@ -383,7 +393,7 @@ internal static class Commands
             using var client = ctx.CreateClient(pair);
             using var engine = SyncEngine.Open(pair, client, ctx.Logger);
             var progress = new ConsoleProgress();
-            var cycle = await engine.PlanAsync(KeepSide(parse, keepLocal, keepRemote), progress, ct);
+            var cycle = await engine.PlanAsync(new PlanOptions { KeepSide = KeepSide(parse, keepLocal, keepRemote), Hold = Keys(parse, hold) }, progress, ct);
             progress.Done();
             PlanPrinter.Print(cycle, parse.GetValue(full));
 
@@ -413,18 +423,27 @@ internal static class Commands
                 return 3;
             }
 
-            // Union-mode plans are always shown for approval, regardless of the mode (§7.2).
-            var needing = cycle.UnionMode && effectiveMode is SyncMode.Guarded or SyncMode.Auto
-                ? cycle.Plan.ActionOps.ToList()
-                : Approval.NeedingApproval(cycle.Plan, effectiveMode);
+            // Union-mode plans are always shown for approval, regardless of the mode and rules (§7.2).
+            var needing = Approval.NeedingApproval(cycle.Plan, effectiveMode, cycle.UnionMode, pair.AutoApprove);
             Func<SyncOp, bool> approved = _ => true;
             if (needing.Count > 0 && !parse.GetValue(yes))
             {
-                var answer = Ask($"{needing.Count} ops need approval. Execute? [y]es / [s]afe ops only / [N]o: ");
+                var answer = Ask($"{needing.Count} ops need approval. Execute? [y]es / [s]afe ops only / [h]old them, run the rest / [N]o: ");
                 if (answer is "s" or "safe")
                 {
                     var rejected = needing.ToHashSet();
                     approved = op => !rejected.Contains(op) || op.IsSafe;
+                }
+                else if (answer is "h" or "hold")
+                {
+                    var rejected = needing.ToHashSet();
+                    approved = op => !rejected.Contains(op);
+                    var held = engine.Hold(cycle, needing);
+                    Console.WriteLine($"Held {held.Count} ops: not proposed again until the item changes ('wds held {pair.Name}' lists them).");
+                    if (held.Count < needing.Count)
+                    {
+                        Console.WriteLine($"{needing.Count - held.Count} moves/renames cannot be held: nothing after them runs this cycle.");
+                    }
                 }
                 else if (answer is not ("y" or "yes"))
                 {
@@ -447,6 +466,122 @@ internal static class Commands
             return result.AllDone && selected.Count == cycle.Plan.Ops.Count ? 0 : result.AbortReason is null ? 2 : 1;
         }));
         return command;
+    }
+
+    public static Command Held(Option<string?> dataDir)
+    {
+        var pairArg = new Argument<string>("pair") { Description = "Pair name or id." };
+        var release = new Option<string[]>("--release") { Description = "Release the held ops of this path (whole subtree); repeatable." };
+        var all = new Option<bool>("--all") { Description = "Release all held ops." };
+        var command = new Command("held", "List or release held ops (rejected earlier, §10).") { pairArg, release, all };
+        command.SetAction((parse, _) => Run(parse.GetValue(dataDir), "held", ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
+            var state = new StatePaths(pair.LocalRoot);
+            if (!File.Exists(state.StateDb))
+            {
+                throw new CliException($"No state.db for pair '{pair.Name}'.");
+            }
+
+            using var store = StateStore.Open(state.StateDb);
+            var held = store.LoadHeld();
+            var keys = Keys(parse, release);
+            if (parse.GetValue(all) || keys.Count > 0)
+            {
+                var released = held.Where(h => parse.GetValue(all) || keys.Any(k => PathKey.IsSelfOrUnder(h.Key, k))).ToList();
+                store.Release(released);
+                foreach (var h in released)
+                {
+                    Console.WriteLine($"released  {h.Type,-12} {h.DisplayPath}");
+                    ctx.Logger.LogInformationSafe("Released held {Type} {Path}", h.Type, h.DisplayPath);
+                }
+
+                Console.WriteLine($"{released.Count} released; the next plan proposes them again.");
+                return Task.FromResult(0);
+            }
+
+            foreach (var h in held)
+            {
+                Console.WriteLine($"{h.HeldAtUtc.ToLocalTime():yyyy-MM-dd HH:mm}  {h.Type,-12} {h.DisplayPath}  [{h.Reason}]");
+            }
+
+            Console.WriteLine(held.Count == 0 ? "No held ops." : $"{held.Count} held ops. Release with --release <path> or --all.");
+            return Task.FromResult(0);
+        }));
+        return command;
+    }
+
+    public static Command Rule(Option<string?> dataDir)
+    {
+        var listPair = new Argument<string>("pair") { Description = "Pair name or id." };
+        var list = new Command("list", "List the auto-approve rules of a pair.") { listPair };
+        list.SetAction((parse, _) => Run(parse.GetValue(dataDir), "rule list", ctx =>
+        {
+            PrintRules(ctx.RequirePair(parse.GetValue(listPair)!));
+            return Task.FromResult(0);
+        }));
+
+        var addPair = new Argument<string>("pair") { Description = "Pair name or id." };
+        var type = new Option<OpType>("--type") { Description = "Op type, e.g. Download, Upload, MkdirLocal, DeleteRemote.", Required = true };
+        var folder = new Option<string>("--folder") { Description = "Relative folder (whole subtree); omit for the whole pair.", DefaultValueFactory = _ => string.Empty };
+        var overwrite = new Option<bool>("--overwrite") { Description = "Also approve uploads/downloads that replace an existing item." };
+        var add = new Command("add", "Always approve ops of this type in this folder (§10); guards and the initial sync still ask.") { addPair, type, folder, overwrite };
+        add.SetAction((parse, _) => Run(parse.GetValue(dataDir), "rule add", ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(addPair)!);
+            var opType = parse.GetValue(type);
+            if (opType is OpType.UpdateBase or OpType.ForgetBase)
+            {
+                throw new CliException($"{opType} ops never need approval.");
+            }
+
+            var rule = new AutoApproveRule
+            {
+                Type = opType,
+                Folder = parse.GetValue(folder)!.Replace('\\', '/').Trim('/'),
+                Overwrite = parse.GetValue(overwrite),
+            };
+            pair.AutoApprove.Add(rule);
+            ctx.SaveSettings();
+            ctx.Logger.LogInformationSafe("Pair {Pair}: auto-approve rule added: {Rule}", pair.Id, rule.ToString());
+            PrintRules(pair);
+            return Task.FromResult(0);
+        }));
+
+        var removePair = new Argument<string>("pair") { Description = "Pair name or id." };
+        var number = new Argument<int>("number") { Description = "Rule number from 'wds rule list'." };
+        var remove = new Command("remove", "Remove an auto-approve rule.") { removePair, number };
+        remove.SetAction((parse, _) => Run(parse.GetValue(dataDir), "rule remove", ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(removePair)!);
+            var n = parse.GetValue(number);
+            if (n < 1 || n > pair.AutoApprove.Count)
+            {
+                throw new CliException($"No rule #{n}; the pair has {pair.AutoApprove.Count}.");
+            }
+
+            var rule = pair.AutoApprove[n - 1];
+            pair.AutoApprove.RemoveAt(n - 1);
+            ctx.SaveSettings();
+            ctx.Logger.LogInformationSafe("Pair {Pair}: auto-approve rule removed: {Rule}", pair.Id, rule.ToString());
+            PrintRules(pair);
+            return Task.FromResult(0);
+        }));
+
+        return new Command("rule", "Auto-approve (\"approve and remember\") rules (§10).") { list, add, remove };
+    }
+
+    private static void PrintRules(PairSettings pair)
+    {
+        for (var i = 0; i < pair.AutoApprove.Count; i++)
+        {
+            Console.WriteLine($"{i + 1,3}. {pair.AutoApprove[i]}");
+        }
+
+        if (pair.AutoApprove.Count == 0)
+        {
+            Console.WriteLine("No auto-approve rules.");
+        }
     }
 
     public static Command Status(Option<string?> dataDir)

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WebDavSync.Core.Model;
+using WebDavSync.Core.Planning;
 
 namespace WebDavSync.Core.Config;
 
@@ -84,7 +86,41 @@ public sealed class PairSettings
     /// <summary>User glob patterns (§12.3). Without <c>/</c> matched against the name, otherwise against the path.</summary>
     public List<string> ExcludePatterns { get; set; } = [];
 
+    /// <summary>"Approve and remember" rules (§10): matching ops run without asking in every mode except union mode.</summary>
+    public List<AutoApproveRule> AutoApprove { get; set; } = [];
+
     public string RemoteRootNormalized => "/" + RemoteRoot.Trim('/');
+}
+
+/// <summary>
+/// Auto-approves ops of one type inside one folder (§10), e.g. downloads into <c>Camera Uploads</c>. Guard trips
+/// (§9) and union-mode plans (§7.2) still need a human.
+/// </summary>
+public sealed class AutoApproveRule
+{
+    public OpType Type { get; set; }
+
+    /// <summary>Relative folder path; the rule covers its whole subtree. Empty: the whole pair.</summary>
+    public string Folder { get; set; } = string.Empty;
+
+    /// <summary>Also cover uploads/downloads that replace an existing item (otherwise only new items).</summary>
+    public bool Overwrite { get; set; }
+
+    public bool Matches(SyncOp op)
+    {
+        if (op.Type != Type || op.IsBaseOnly || (op.Overwrite && !Overwrite))
+        {
+            return false;
+        }
+
+        // Moves must stay inside the folder; a conflict's NewKey is its copy next to the item.
+        var folder = PathKey.FromPath(Folder.Replace('\\', '/').Trim('/'));
+        return PathKey.IsSelfOrUnder(op.Key, folder) &&
+               (op.NewKey is null || op.Type == OpType.Conflict || PathKey.IsSelfOrUnder(op.NewKey, folder));
+    }
+
+    public override string ToString() =>
+        $"{Type} in {(Folder.Length == 0 ? "<whole pair>" : "'" + Folder + "'")}{(Overwrite ? ", incl. overwrites" : string.Empty)}";
 }
 
 public sealed class AppSettings

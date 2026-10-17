@@ -321,6 +321,63 @@ public sealed class EngineScenarioTests : IDisposable
         await AssertUpToDateAsync();
     }
 
+    [Fact]
+    public async Task Held_op_is_not_proposed_until_the_item_changes()
+    {
+        _local.File("keep.txt", "k");
+        await SyncAsync();
+        _remote.AddFile("/test/unwanted.bin", "remote junk");
+        _remote.AddFile("/test/wanted.txt", "w");
+
+        using (var engine = SyncEngine.Open(_pair, _remote, NullLogger.Instance))
+        {
+            var cycle = await engine.PlanAsync(new PlanOptions { Hold = ["unwanted.bin"] }, ct: TestContext.Current.CancellationToken);
+            PlanAssert.Only(cycle.Plan, (OpType.Download, "wanted.txt"));
+            Assert.Equal("unwanted.bin", Assert.Single(cycle.Held).Key);
+            await engine.ExecuteAsync(cycle, cycle.Plan.Ops, ct: TestContext.Current.CancellationToken);
+        }
+
+        using (var engine = SyncEngine.Open(_pair, _remote, NullLogger.Instance))
+        {
+            var cycle = await engine.PlanAsync(ct: TestContext.Current.CancellationToken);
+            PlanAssert.Empty(cycle.Plan);
+            Assert.Single(cycle.Held);
+            Assert.Single(engine.Store.LoadHeld());
+        }
+
+        Assert.False(File.Exists(_local.Full("unwanted.bin")));
+        _remote.AddFile("/test/unwanted.bin", "remote junk, now changed");
+
+        var (changed, result) = await SyncAsync();
+        PlanAssert.Only(changed.Plan, (OpType.Download, "unwanted.bin"));
+        Assert.True(result.AllDone);
+        await AssertUpToDateAsync();
+        using var check = SyncEngine.Open(_pair, _remote, NullLogger.Instance);
+        Assert.Empty(check.Store.LoadHeld());
+    }
+
+    [Fact]
+    public void Schema_1_state_db_gets_the_new_held_table()
+    {
+        var path = Path.Combine(_local.Path, "old-state.db");
+        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={path};Pooling=False"))
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE held(key TEXT PRIMARY KEY, reason TEXT NOT NULL, held_at INTEGER NOT NULL);
+                CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NULL);
+                INSERT INTO meta VALUES('schema_version', '1');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        using var store = StateStore.Open(path);
+        store.Hold([new HeldItem("a.txt", OpType.Download, "a.txt", "remote new", "L - | R 1:x", DateTime.UtcNow)]);
+        Assert.Equal(OpType.Download, Assert.Single(store.LoadHeld()).Type);
+        Assert.Equal("2", store.GetMeta(MetaKeys.SchemaVersion));
+    }
+
     private async Task<(CyclePlan Cycle, ExecutionResult Result)> SyncAsync(Dictionary<string, Side>? keepSide = null)
     {
         using var engine = SyncEngine.Open(_pair, _remote, NullLogger.Instance);

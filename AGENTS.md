@@ -19,7 +19,8 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
   approval), `Execution/` (executor), `State/` (SQLite state DB), `Legacy/` (`.cloud.db` importer),
   `Engine/` (cycle orchestration, pair setup), `Config/` (settings, markers, filters).
 - `src/WebDavSync.App/` — WinForms tray app (`net10.0-windows`); not created yet.
-- `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `status`.
+- `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `held`, `rule`,
+  `status`.
 - `tests/WebDavSync.Core.Tests/` — unit tests (planner decision table, moves, folders, guards, hash, names, importer,
   executor scenarios on temp folders + in-memory remote). `tests/WebDavSync.IntegrationTests/` — against
   `rclone serve webdav` in Docker (skipped without Docker).

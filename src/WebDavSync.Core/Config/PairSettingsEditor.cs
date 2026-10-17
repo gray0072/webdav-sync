@@ -6,7 +6,7 @@ namespace WebDavSync.Core.Config;
 
 /// <summary>
 /// Changes pair settings from <c>name=value</c> assignments (CLI <c>wds pair set</c>, §15.5). Only settings that can
-/// change without touching the pair's identity or base are editable; see <see cref="Fixed"/> and <see cref="FilterLists"/>.
+/// change without touching the pair's identity or base are editable; see <see cref="Fixed"/> and <see cref="Elsewhere"/>.
 /// </summary>
 public static class PairSettingsEditor
 {
@@ -15,11 +15,15 @@ public static class PairSettingsEditor
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "id", "localRoot", "remoteUrl", "remoteRoot" };
 
     /// <summary>
-    /// Selective sync and patterns: excluding must drop the subtree's base and re-including must run in union mode
-    /// (§12.2, safety invariant 10); not implemented yet, so they are not editable here.
+    /// Lists that are changed by other means, with the reason. Selective sync and patterns: excluding must drop the
+    /// subtree's base and re-including must run in union mode (§12.2, safety invariant 10); not implemented yet.
     /// </summary>
-    public static readonly IReadOnlySet<string> FilterLists =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "excludedFolders", "excludePatterns" };
+    public static readonly IReadOnlyDictionary<string, string> Elsewhere = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["excludedFolders"] = "cannot be changed here yet: excluding and re-including need base handling (§12.2)",
+        ["excludePatterns"] = "cannot be changed here yet: excluding and re-including need base handling (§12.2)",
+        ["autoApprove"] = "is changed with 'wds rule add|remove'",
+    };
 
     private static readonly Dictionary<string, Action<PairSettings, string>> Setters = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -69,9 +73,9 @@ public static class PairSettingsEditor
             throw new ArgumentException($"'{name}' identifies the pair and cannot be changed; create a new pair instead.");
         }
 
-        if (FilterLists.Contains(name))
+        if (Elsewhere.TryGetValue(name, out var reason))
         {
-            throw new ArgumentException($"'{name}' cannot be changed here yet: excluding and re-including need base handling (§12.2).");
+            throw new ArgumentException($"'{name}' {reason}.");
         }
 
         if (!Setters.TryGetValue(name, out var setter))

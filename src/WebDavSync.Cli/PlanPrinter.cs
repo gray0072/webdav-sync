@@ -61,6 +61,21 @@ internal static class PlanPrinter
             }
         }
 
+        if (cycle.Held.Count > 0)
+        {
+            Console.WriteLine($"-- Held ({cycle.Held.Count}): not proposed until the item changes; 'wds held --release' --");
+            var limit = full ? int.MaxValue : DefaultLimit;
+            foreach (var op in cycle.Held.Take(limit))
+            {
+                Console.WriteLine($"   {op.Type} {op.DisplayPath}{(op.IsDir ? "/" : string.Empty)}  [{op.Reason}]");
+            }
+
+            if (cycle.Held.Count > limit)
+            {
+                Console.WriteLine($"   ... and {cycle.Held.Count - limit} more (use --full)");
+            }
+        }
+
         Commands.PrintWarnings("Plan warnings", plan.Warnings, full ? int.MaxValue : 20);
         foreach (var trip in cycle.Guards.Trips)
         {

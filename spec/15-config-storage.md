@@ -60,7 +60,7 @@ items(key PK, is_dir, local_path, remote_path, local_file_id, local_size, local_
       remote_etag, remote_size, remote_mtime, remote_hash, remote_confirmed, synced_at)
 journal(op_id PK, cycle_id, type, path, path2, status, attempts, error, created_at, updated_at)
 conflicts(id PK, key, local_copy, remote_copy, detected_at, resolved_at)
-held(key PK, reason, held_at)
+held(key, type, path, reason, state, held_at; PK key + type)
 meta(key PK, value)
 ```
 
@@ -70,7 +70,8 @@ meta(key PK, value)
 - Journal status: `Running`, `Done`, `Failed`, `Skipped`, `Interrupted` ([§6.7](06-sync-algorithm.md)).
 - `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `legacy_import`
   (import stats, JSON), `last_cycle` (summary, JSON), `capabilities` (reserved for probe results).
-- `held` is created but not used by the prototype.
+- `held`: the held list ([§10](10-modes-approval.md)); `type` is the op type, `path` its display path, `state` the
+  item's state on both sides when it was held. Schema 2; opening a schema-1 DB drops its unused `held` table.
 
 ## 15.4 Legacy files
 
@@ -106,6 +107,7 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ] }`. Im
 | `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
 | `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)). |
 | `excludePatterns` | string[] | `[]` | Globs (`*`, `?`); without `/` matched against the name, otherwise against the path ([§12.3](12-filters.md)). |
+| `autoApprove` | `{type, folder, overwrite}[]` | `[]` | "Approve and remember" rules ([§10](10-modes-approval.md)); CLI `wds rule`. |
 
 Settings of later milestones (not implemented yet; names reserved): timing ([§8](08-timing.md): `localQuietPeriod`,
 `maxBatchDelay`, `fileStableFor`, `remotePollInterval`, `remoteFullCrawlInterval`, `localFullRescanInterval`,
@@ -117,7 +119,7 @@ CLI: `wds pair show <pair>` prints all settings; `wds pair set <pair> name=value
 (`none` clears an optional value; sizes accept `KB`/`MB`/`GB`/`TB`, binary units). Not editable: `id`, `localRoot`,
 `remoteUrl`, `remoteRoot` (identity of the pair: base and root markers, [§9](09-safety-guards.md) #1) and, until
 exclusion handling ([§12.2](12-filters.md): drop the subtree's base on exclude, union mode on re-include) exists,
-`excludedFolders` / `excludePatterns`.
+`excludedFolders` / `excludePatterns`; `autoApprove` is changed with `wds rule add|remove`.
 
 The data folder can be overridden with `--data-dir` or the environment variable `WDS_DATA_DIR` (used by tests
 and for running several setups side by side).

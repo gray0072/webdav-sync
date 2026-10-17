@@ -19,13 +19,25 @@ Additional debug controls:
 - Approval UI groups ops by type and folder, shows reason (`local modified`, `remote deleted`, …),
   sizes, and for overwrites both versions' size/mtime.
 - **Rejected** ops: the item is put into the *held* list and is not proposed again until it changes
-  on either side, or the user releases it. (Not in the prototype: rejected ops are simply proposed again.)
-- "Approve and remember" rules: e.g. always auto-approve downloads into `Camera Uploads`.
+  on either side, or the user releases it. A held entry is `(key, op type)` plus the item's state on both sides
+  (local size + mtime, remote size + etag, or mtime without an etag; `dir`; absent). Each plan drops the ops that
+  match a held entry with the same state, and the action ops below a held folder op (their parent is not there);
+  held ops are left out before the guards, so they do not count as mass deletes. Entries whose op is gone or whose
+  state changed are released, but only on complete snapshots of both sides (an unlisted folder is not a change).
+  Phase-0 ops (moves, renames) cannot be held: the rest of the plan depends on them, so rejecting one stops the
+  cycle and it is proposed again. Held ops are excluded from the plan, so they do not prevent the first full cycle
+  (§7.6): a held item has no base entry or keeps its old one, so it is never deleted because of being held.
+- "Approve and remember" rules (`autoApprove`, [§15.5](15-config-storage.md)): op type + folder (whole subtree,
+  empty = the whole pair) + `overwrite` (also uploads/downloads that replace an item; off by default). A matching op
+  needs no approval in any mode; moves must stay inside the folder. Rules never bypass guard trips (§9) or the
+  union-mode approval (§7.2), e.g. always auto-approve downloads into `Camera Uploads`.
 - Every executed op is listed in the Activity log with an "Open"/"Show in folder" action.
 - CLI: `wds plan <pair> [--full]` prints the plan; `wds sync <pair> --once [--dry-run] [--max-ops N]
   [--mode M] [--yes] [--accept-guards] [--full]`; both take `--keep-local <path>` / `--keep-remote <path>`
-  ([§6.4](06-sync-algorithm.md)). The console asks `[y]es / [s]afe ops only / [N]o` for ops that
-  need approval (`--yes` approves); a guard trip needs typing `yes` (or `--accept-guards`). Keys typed before a prompt
+  ([§6.4](06-sync-algorithm.md)) and `--hold <path>` (hold the subtree's ops before guards and approval). The console
+  asks `[y]es / [s]afe ops only / [h]old them, run the rest / [N]o` for ops that need approval (`--yes` approves); a guard trip needs typing `yes` (or `--accept-guards`). Keys typed before a prompt
   appears are discarded, so type-ahead never answers it. Without an interactive
-  console both default to "no". Exit codes: 0 done, 1 error, 2 partially done, 3 stopped by a guard, the user or
+  console both default to "no". `wds held <pair> [--release <path>] [--all]` lists or releases held ops;
+  `wds rule list|add|remove <pair>` manages the auto-approve rules (`add --type Download --folder "Camera Uploads"
+  [--overwrite]`). Exit codes: 0 done, 1 error, 2 partially done, 3 stopped by a guard, the user or
   root sanity.

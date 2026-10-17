@@ -43,6 +43,7 @@ public sealed class PairSettingsEditorTests
     [InlineData("remoteRoot=/Other")]
     [InlineData("excludedFolders=Photos")]
     [InlineData("excludePatterns=*.bak")]
+    [InlineData("autoApprove=Download")]
     [InlineData("noSuchSetting=1")]
     [InlineData("mode=Turbo")]
     [InlineData("mode=1")]
@@ -76,7 +77,7 @@ public sealed class PairSettingsEditorTests
         Assert.Equal(expected, PairSettingsEditor.ParseSize(text));
 
     [Fact]
-    public void Every_writable_setting_is_editable_fixed_or_a_filter_list()
+    public void Every_writable_setting_is_editable_fixed_or_changed_elsewhere()
     {
         var names = typeof(PairSettings).GetProperties().Where(p => p.CanWrite)
             .Select(p => char.ToLowerInvariant(p.Name[0]) + p.Name[1..]);
@@ -84,7 +85,7 @@ public sealed class PairSettingsEditorTests
         {
             Assert.True(
                 PairSettingsEditor.Names.Contains(name, StringComparer.OrdinalIgnoreCase) ||
-                PairSettingsEditor.Fixed.Contains(name) || PairSettingsEditor.FilterLists.Contains(name),
+                PairSettingsEditor.Fixed.Contains(name) || PairSettingsEditor.Elsewhere.ContainsKey(name),
                 $"Setting '{name}' is not covered by PairSettingsEditor.");
         }
     }

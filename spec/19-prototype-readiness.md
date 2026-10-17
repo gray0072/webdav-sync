@@ -23,6 +23,7 @@ no watcher, no scheduler.
 | `wds probe --url --user [--root]` | Prints a capability report ([§4.2](04-remote-webdav.md)) and stores it; answers [§18](18-open-questions.md) items 2–6 for Mail.ru. | Done; verified against rclone and Mail.ru. |
 | `wds pair add` / `pair list` | Creates a pair: `settings.json` entry, local `pair.json`, `state.db`; optional `--import-legacy`. | Done. |
 | `wds pair show` / `pair set` | Prints / changes pair settings (§15.5) instead of editing `settings.json`. | Done. |
+| `wds held` / `wds rule`, `--hold` | Held list and auto-approve rules ([§10](10-modes-approval.md)). | Done (unit + engine tests). |
 | `wds import <root> [--pair]` | Reads `.cloud.db` from a copy, prints tree stats, both-trees agreement, ignored folders; with `--pair` writes the baseline. | Done; real `D:\Cloud`: 43 885 / 43 883 files, 893 folders, 44 776 base entries, 2 local-only. |
 | `wds scan <root> [--hash] [--sample N]` | Local snapshot with FileId/size/mtime and content hash; hashes match `.cloud.db` for unchanged files. | Done; real `D:\Cloud`: 43 698 unchanged, FileId == `inode` for all, 300/300 sampled hashes equal. |
 | `wds plan <pair>` | Three-way plan printed grouped by op type with reasons; nothing executed. | Done. |
@@ -39,7 +40,7 @@ Acceptance:
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 181 unit + 6 integration, all green (`dotnet test`).
+- Tests: 195 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
 
@@ -101,7 +102,6 @@ diagnostics export, `secrets.dat` (prototype reads the password from the environ
 
 ## 19.8 Known gaps in the prototype (next milestones)
 
-- Held list for rejected ops and "approve and remember" rules ([§10](10-modes-approval.md)).
 - Content reuse instead of download ([§6.3](06-sync-algorithm.md)); `Range` resume of downloads ([§6.6](06-sync-algorithm.md)).
 - Journal re-validation of interrupted ops ([§6.7](06-sync-algorithm.md)) — currently re-planned from scratch.
 - Parallel transfers, bandwidth limits, adaptive backoff on 429/503 ([§11](11-bandwidth-pause.md)).
@@ -175,7 +175,8 @@ Next, in order:
 
 1. ~~`wds pair set`~~ — done 2026-10-17: `wds pair show` / `pair set <pair> name=value ...` (§15.5); `cloud` is now
    `ApproveAll` with `maxOpsPerCycle = 20`, so real cycles need no `--mode` / `--max-ops`.
-2. Held list for rejected ops and "approve and remember" rules (§10).
+2. ~~Held list and "approve and remember" rules~~ — done 2026-10-17 (§10): `--hold`, `[h]old` at the prompt,
+   `wds held`, `wds rule`. Not done: an "approve and remember" answer at the prompt (rules are added with `wds rule add`).
 3. Large files: `Range` resume of downloads, journal re-validation of interrupted ops (§6.6, §6.7).
 4. Crawl time (~7 min per cycle, Mail.ru has no folder etags): parallel PROPFINDs within the request limit.
 5. Tray app milestone (§14): watcher, scheduler, `secrets.dat` (DPAPI) instead of `WDS_PASSWORD`.
