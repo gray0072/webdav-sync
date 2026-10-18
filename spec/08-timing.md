@@ -25,6 +25,13 @@ folders our own ops touched (§4.3 #3), as long as the cached snapshot is comple
 full crawl has not passed. The poll is counted from the last full crawl, so steady local activity cannot postpone
 it. A watcher overflow or a failed cycle drops the cache.
 
+Remote change check (a store with a change token, i.e. the Mail.ru API, [§4.7](04-remote-webdav.md)): every
+`remoteCheckInterval` (default 1 min; 0 = off) one small request compares the remote root's change token with the
+one recorded by the last complete full crawl; a difference starts a cycle with a full crawl ("remote change"), long
+before the poll. The cycle after one that changed the remote is followed by one more (cheap) cycle, because our own
+ops change the token too. No checks while paused, while a retry is pending or without a recorded token (the API is not
+available, or the last full crawl was incomplete); the poll still runs.
+
 Start-up trust: `state.db` `meta.last_full_crawl` records every complete full crawl (CLI or tray). If it is younger
 than `remotePollInterval` when the service starts (and the initial sync is done), the first cycle builds the remote
 snapshot from the base (each synced item's remote path, size, mtime, etag, hash; every base folder counts as listed)

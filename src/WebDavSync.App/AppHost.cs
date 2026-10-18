@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Extensions.Logging;
@@ -132,16 +131,16 @@ internal sealed class AppHost : IDisposable
     }
 }
 
-/// <summary>A pair's WebDAV client and background service; restarted when the password changes.</summary>
+/// <summary>A pair's remote client and background service; restarted when the password changes.</summary>
 internal sealed class PairRuntime(PairSettings pair, AppHost host)
 {
-    private WebDavClient? _client;
+    private IRemoteClient? _client;
 
     public PairSettings Pair { get; } = pair;
 
     public PairService? Service { get; private set; }
 
-    /// <summary>The WebDAV client, while the pair runs.</summary>
+    /// <summary>The remote client, while the pair runs.</summary>
     public IRemoteStore? Remote => _client;
 
     /// <summary>Why the service is not running (e.g. no password).</summary>
@@ -169,16 +168,7 @@ internal sealed class PairRuntime(PairSettings pair, AppHost host)
         }
 
         StartError = null;
-        _client = new WebDavClient(
-            new WebDavOptions
-            {
-                Endpoint = new Uri(Pair.RemoteUrl),
-                User = Pair.User,
-                Password = password,
-                MaxRequestsPerSecond = Pair.MaxRequestsPerSecond,
-                HashProperty = Pair.RemoteHashProperty is null ? null : XName.Get(Pair.RemoteHashProperty),
-            },
-            host.CreateLogger("webdav"));
+        _client = RemoteClientFactory.Create(Pair, password, host.CreateLogger("webdav"), host.CreateLogger("mailru"));
         Service = new PairService(Pair, _client, host.CreateLogger("pair"));
         Service.Start();
     }

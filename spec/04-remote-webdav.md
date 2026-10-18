@@ -55,8 +55,14 @@ folder and DELETE work.
 
 ## 4.3 Remote change detection
 
-WebDAV has no change feed. Strategy, in order of preference (chosen by probe):
+Plain WebDAV has no change feed. Strategy, in order of preference:
 
+0. **Tree listing** (a store with `IRemoteTreeLister`: the Mail.ru API, [§4.7](#47-mailru-api-tree-listing-and-change-token)).
+   A crawl takes every folder's listing from one tree request and lists over WebDAV only the folders missing from it
+   (§4.7 says which); when the tree is not available the crawl is the normal full crawl (#2). Between polls the
+   remote root's change token is checked every `remoteCheckInterval` (default 1 min, §8): a change starts a cycle
+   with a full crawl. The token comes with the tree of the whole pair; it is recorded with every complete full crawl
+   (`meta.remote_change_token`) and cleared after an incomplete one.
 1. **Incremental crawl**: if folder etag/mtime propagates upwards, PROPFIND only folders whose
    etag changed since the last crawl.
 2. **Full crawl**: `Depth: 1` breadth-first over all folders, throttled by the request limiter.
@@ -99,7 +105,7 @@ Mail.ru quirks seen so far (all handled):
 
 | Profile | Endpoint | Notes |
 |---|---|---|
-| Mail.ru Cloud (primary) | `https://webdav.cloud.mail.ru/` | App password for WebDAV; `getetag` = content hash ([§3.3](03-legacy-state.md)), `remoteHashProperty = {DAV:}getetag`; full crawl only; limits per probe ([§18](18-open-questions.md)). |
+| Mail.ru Cloud (primary) | `https://webdav.cloud.mail.ru/` | App password; `getetag` = content hash ([§3.3](03-legacy-state.md)), `remoteHashProperty = {DAV:}getetag`; tree listing and change token over the Mail.ru API when the app password has full access (§4.7), otherwise full crawl only; limits per probe ([§18](18-open-questions.md)). |
 | Generic WebDAV | user-defined | Defaults only; everything else from the probe. |
 
 ## 4.5 HTTP error taxonomy and retry policy
@@ -126,3 +132,63 @@ is not in the prototype.
 - Remote identity stored in base: `etag`, `size`, `mtime` as returned by PROPFIND after the operation.
 - Downloaded files get the remote `getlastmodified` as their mtime (setting `SetLocalMtimeFromRemote`, default on);
   the base stores the actual local mtime after the move into place.
+
+## 4.7 Mail.ru API (tree listing and change token)
+
+On the Mail.ru endpoint (setting `useMailRuApi`, default on) a pair's remote client is `MailRuStore`
+(`RemoteClientFactory`): **every operation still goes through WebDAV**; the Mail.ru Cloud API (the official desktop
+client's, undocumented; implemented by rclone `backend/mailru` and yar229/WebDavMailRuCloud) adds two reads:
+
+- **Tree listing** (`IRemoteTreeLister.ListTreeAsync`): one request returns a whole subtree with size, mtime and
+  content hash of every file — the same fields as the WebDAV listing on Mail.ru (`getetag` = hash; folders without
+  etag and mtime), so snapshots, the base and the planner do not see the difference.
+- **Change token** (`GetChangeTokenAsync`): the folder's `grev`, which rises on the folder and every ancestor for any
+  change below it (add, overwrite, rename, move — on both ends, delete, mtime change), also for changes made over
+  WebDAV, the web UI or other clients. A folder outside the changed path keeps its `grev`.
+
+**Login.** OAuth password grant `POST https://o2.mail.ru/token` (form `client_id=cloud-win`, `grant_type=password`,
+`username`, `password`). It needs an **app password with full access ("Mail, Cloud and Calendar")**; a WebDAV-only
+app password is refused (`error_code 3`). The full-access password works for WebDAV too, so one password serves the
+pair. The access token lives 1 h and is renewed with `grant_type=refresh_token`. Tokens travel in query strings
+(`access_token=`, `token=`), so request URLs are never logged.
+
+**Requests.** Change token: `GET https://cloud.mail.ru/api/m1/folder?home=<path>&offset=0&limit=1&access_token=…` →
+`body.grev`. Tree: `GET https://dispatcher.cloud.mail.ru/m?token=…` → metaserver URL (first word; cached 20 min), then
+`POST <metaserver>?client_id=cloud-win&token=…` with the binary body `uvar 117, string path, uvar depth (100 000),
+uvar options (0x1E3), uvar 0`. Numbers are unsigned LEB128; request strings are `uvar length+1, UTF-8, 0`.
+
+**Answer.** Status byte (`0` ok, `1` not found), revision header (version byte + tree id and counters), total and
+used space (options 1, 64), fingerprint (`uvar` length + bytes), then records: `1` item, `2` descend into the last
+folder item, `3` ascend, `15` `uvar n` + n pairs of `uvar` (skipped), `0` end. An item: `u16` LE head (type =
+head & 3: `0` mount, `1` file, `2` folder, `3` shared; head & `0x1000` → 16-byte node id), **one byte** name length
+and the UTF-8 name, `uvar` revision (folders: `grev`); a file: `uvar` mtime (Unix s), `uvar` size, 20-byte hash; a
+folder: `uvar rev`; a mount: tree id[12], 2 × `uvar`; shared: `uvar`, tree id[12]; non-files then `uvar` direct child
+folders and files (option 2) and `uvar` subtree size (option 32). The cloud rejects names over 255 UTF-8 bytes (also
+over WebDAV); rclone reads the name length as a varint, which breaks names of 128 bytes and more.
+
+**Safety (invariant #1).** The parser reads exactly: a short answer, trailing bytes, an unknown record or a top item
+that is not the requested folder reject the whole answer. A folder's listing is used only when its listed children
+match the child counts the server reports for it; otherwise (depth cut, mounted or shared folders, anything
+unexpected) that folder is listed over WebDAV. Any API failure (login, HTTP, format, the login challenge
+`error_code 13` reported for long rclone sessions) makes the tree "not available": the crawl goes over WebDAV and the
+API is tried again after 10 min; a refused login disables it until the pair restarts with a new password (repeated
+refused logins could lock the account). Name rules, filters and case duplicates are applied by the scanner exactly
+as for WebDAV listings.
+
+**Checked** (test account, 2026-10-18): `wds crawl <pair> --compare` (read-only; crawls both ways and compares the
+snapshots) — identical on a tree with Cyrillic names of 254 bytes, `#`, `%`, `+`, spaces and 40 levels; tree
+listing of 11.4 k items in one request in 0.6 s (~470 KB); `smoke-real.ps1` all PASS with every crawl from the tree
+(0 WebDAV listings, including the subtree re-crawl after a folder move).
+
+**Seen but not used** (candidates for later, all live-tested):
+
+- Commit of uploaded content (`PUT` to the `/u` shard, then binary opcode 103) sets the mtime; re-committing the same
+  hash changes the mtime without an upload; content the cloud already has (any account) or of ≤ 20 bytes (the hash is
+  the content) is committed by hash without an upload. Mode bits: 1 = create if missing, 2 = fail if it exists
+  (mode 3 = create only), 0 = replace only; there is no "replace only if the current hash is X".
+- Binary move (opcode 105) **silently overwrites** an existing target, and the overwritten file does not go to the
+  trash; JSON `file/move` / `file/rename` with `conflict=strict` refuse (`400 exists`). `file/remove` → trash.
+- JSON `api/m1/folder` silently returns at most 8 000 children (page with `offset`, check `count`).
+- Sending the last fingerprint with a tree request returns status 12 "not modified" (48 bytes), but the fingerprint
+  is account-wide.
+- Uploads are one `PUT` without resume, as over WebDAV; a 700 MB upload was dropped near its end there too.

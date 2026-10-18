@@ -29,6 +29,7 @@ no watcher, no scheduler.
 | `wds plan <pair>` | Three-way plan printed grouped by op type with reasons; nothing executed. | Done. |
 | `wds sync <pair> --once [--dry-run] [--max-ops N]` | Executes the plan with console approval, journal, base commit, safety guards. | Done. |
 | `wds status <pair>` | Base size, initial sync state, conflicts, last cycle. | Done. |
+| `wds crawl <pair> [--compare]` | Remote crawl as a cycle does it, read-only; `--compare` also crawls folder by folder over WebDAV and diffs the snapshots ([§4.7](04-remote-webdav.md)). | Done; test account: identical. |
 
 Acceptance:
 
@@ -40,7 +41,7 @@ Acceptance:
 - `plan` for the real `D:\Cloud` with the imported baseline: checked **offline** (legacy remote tree as a
   stand-in for the remote, [§3.5](03-legacy-state.md)): 232 items to delete remotely (184 files, 48 folders)
   → mass-delete guard trips. Re-check with the real crawl.
-- Tests: 226 unit + 6 integration, all green (`dotnet test`).
+- Tests: 268 unit + 6 integration, all green (`dotnet test`).
 
 ## 19.3 Needs the user (before touching the real cloud)
 
@@ -190,3 +191,8 @@ Next, in order:
    - 5c ~~Local-change cycles without a full crawl~~ — done 2026-10-17: cached snapshot + re-list (§4.3 #3, §8).
    - 5d ~~WinForms tray app~~ — done 2026-10-17: `src/WebDavSync.App` (§14.1). Next: run it on `D:\Cloud` in
      `ApproveAll` (user's go-ahead), then Activity / Conflicts / Errors / Settings windows (§14).
+6. ~~Mail.ru API for remote change detection~~ — done 2026-10-18 ([§4.7](04-remote-webdav.md), [§8](08-timing.md)):
+   tree listing in one request instead of a PROPFIND per folder, change token checked every minute; operations stay
+   on WebDAV. Checked on the test account (`crawl --compare` identical, smoke test PASS). For `D:\Cloud`: create an
+   app password with full access on the main account, `wds secret set cloud`, then `wds crawl cloud --compare`
+   (read-only) before the next real cycle. Without it everything works as before over WebDAV.

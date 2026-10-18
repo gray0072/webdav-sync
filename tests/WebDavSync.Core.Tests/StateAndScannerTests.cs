@@ -240,6 +240,87 @@ public sealed class RemoteScannerTests
         Assert.Null(await scanner.RefreshAsync(cached, "/root", ["a"], ct));
     }
 
+    [Fact]
+    public async Task Tree_listing_gives_the_same_snapshot_as_a_folder_by_folder_crawl_without_listing_requests()
+    {
+        var store = TreeSample();
+        var tree = new TreeRemoteStore(store) { Token = "42" };
+        var filter = new SyncFilter(["skip"]);
+        var ct = TestContext.Current.CancellationToken;
+
+        var plain = await new RemoteScanner(store, filter, NullLogger.Instance).CrawlAsync("/root", ct: ct);
+        var fast = await new RemoteScanner(tree, filter, NullLogger.Instance, parallel: 4).CrawlAsync("/root", ct: ct);
+
+        AssertSameSnapshot(plain, fast);
+        Assert.Contains("bad:name.txt", fast.SkippedKeys);
+        Assert.Contains("skip", fast.SkippedKeys);
+        Assert.Equal(0, tree.FolderListings);
+        Assert.Equal("42", fast.ChangeToken);
+        Assert.Null(plain.ChangeToken);
+    }
+
+    [Fact]
+    public async Task Folders_missing_from_the_tree_are_listed_one_by_one()
+    {
+        var store = TreeSample();
+        var tree = new TreeRemoteStore(store) { Omit = { "/root/a/b" } };
+        var ct = TestContext.Current.CancellationToken;
+
+        var plain = await new RemoteScanner(store, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", ct: ct);
+        var fast = await new RemoteScanner(tree, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", ct: ct);
+
+        AssertSameSnapshot(plain, fast);
+        Assert.Equal(1, tree.FolderListings);
+        Assert.True(fast.IsComplete);
+    }
+
+    [Fact]
+    public async Task Without_a_tree_every_folder_is_listed_and_there_is_no_change_token()
+    {
+        var store = TreeSample();
+        var tree = new TreeRemoteStore(store) { Available = false };
+        var ct = TestContext.Current.CancellationToken;
+
+        var plain = await new RemoteScanner(store, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", ct: ct);
+        var fallback = await new RemoteScanner(tree, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", ct: ct);
+
+        AssertSameSnapshot(plain, fallback);
+        Assert.Equal(plain.ListedFolders.Count, tree.FolderListings);
+        Assert.Null(fallback.ChangeToken);
+    }
+
+    [Fact]
+    public async Task Subtree_crawl_uses_the_tree_but_carries_no_change_token_of_the_pair()
+    {
+        var tree = new TreeRemoteStore(TreeSample());
+
+        var snapshot = await new RemoteScanner(tree, SyncFilter.Empty, NullLogger.Instance).CrawlAsync("/root", "a", ct: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["a/b", "a/b/deep.txt", "a/one.txt"], snapshot.Entries.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(0, tree.FolderListings);
+        Assert.Null(snapshot.ChangeToken);
+    }
+
+    private static InMemoryRemoteStore TreeSample()
+    {
+        var store = new InMemoryRemoteStore();
+        store.AddFile("/root/top.txt", "top");
+        store.AddFile("/root/a/one.txt", "one");
+        store.AddFile("/root/a/b/deep.txt", "deep");
+        store.AddFile("/root/bad:name.txt", "bad");
+        store.AddFile("/root/skip/hidden.txt", "hidden");
+        store.AddFile("/root/.webdavsync/pair.json", "{}");
+        store.AddDir("/root/empty");
+        return store;
+    }
+
+    private static void AssertSameSnapshot(RemoteSnapshot expected, RemoteSnapshot actual)
+    {
+        Assert.Equal(expected.Entries.OrderBy(e => e.Key, StringComparer.Ordinal), actual.Entries.OrderBy(e => e.Key, StringComparer.Ordinal));
+        Assert.Equal(expected.ListedFolders.Order(StringComparer.Ordinal), actual.ListedFolders.Order(StringComparer.Ordinal));
+        Assert.Equal(expected.SkippedKeys.Order(StringComparer.Ordinal), actual.SkippedKeys.Order(StringComparer.Ordinal));
+    }
+
     /// <summary>Adds latency to listings and records how many were in flight at once.</summary>
     private sealed class SlowStore(InMemoryRemoteStore inner) : IRemoteStore
     {

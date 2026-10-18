@@ -95,7 +95,9 @@ basen uppdateras först när resultatet är verifierat på målsidan.
 - Windows 10 eller 11 (x64)
 - [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Ett WebDAV-konto. För **Mail.ru Cloud**: ett applösenord (Mail.ru-konto → *Säkerhet* → *Lösenord för externa
-  appar*), adress `https://webdav.cloud.mail.ru/`.
+  appar*), adress `https://webdav.cloud.mail.ru/`. Ge applösenordet **full åtkomst ("Mail, Cloud and Calendar")**:
+  då läses hela molnet med en enda begäran och ändringar i molnet märks inom en minut. Ett applösenord bara för
+  WebDAV fungerar också, men långsammare (molnet läses mapp för mapp och kontrolleras var 15:e minut).
 
 ## Installation
 
@@ -174,6 +176,7 @@ praktiskt för skript, felsökning och de första cyklerna för en stor mapp.
 | `wds held <par> [--release <sökväg>] [--all]` | Visa eller släpp kvarhållna åtgärder |
 | `wds rule list\|add\|remove <par>` | Regler för automatiskt godkännande |
 | `wds status <par>` | Parets läge |
+| `wds crawl <par> [--compare]` | Läs molnsidan som en synkcykel gör (ändrar inget); Mail.ru: jämför med en läsning mapp för mapp över WebDAV |
 
 Alla alternativ: `wds <kommando> --help`.
 
@@ -185,6 +188,8 @@ Inställningarna finns i `data\settings.json`; ändra dem från aktivitetsfälte
 |---|---|---|
 | `mode` | `ApproveAll` | Se [Lägen](#lägen) |
 | `remotePollInterval` | `15m` | Hur ofta hela molnet kontrolleras; lokala ändringar plockas upp inom sekunder |
+| `remoteCheckInterval` | `1m` | Mail.ru med ett applösenord med full åtkomst: hur ofta molnet tillfrågas om något har ändrats (en liten begäran) |
+| `useMailRuApi` | `true` | Mail.ru: läs molnet med Mail.ru-API:t när applösenordet tillåter det; `false` = bara WebDAV |
 | `maxOpsPerCycle` | ingen | Högst N åtgärder per cykel (praktiskt de första gångerna) |
 | `massDeleteCount` / `massDeletePercent` | `50` / `5` | Gränser för skyddet mot massradering |
 | `conflictWinner` | `Local` | Vilken version som behåller originalnamnet vid en konflikt |

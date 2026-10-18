@@ -235,6 +235,43 @@ public sealed class PairServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Remote_change_token_starts_a_cycle_long_before_the_poll()
+    {
+        _pair.RemoteCheckInterval = TimeSpan.FromMilliseconds(50);
+        var tree = new TreeRemoteStore(_remote);
+        var service = await StartInSyncAsync(remote: tree);
+        var synced = service.Status.LastSyncUtc;
+
+        // Same token: checks run, cycles do not.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (tree.TokenChecks < 3 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(tree.TokenChecks >= 3);
+        Assert.Equal(synced, service.Status.LastSyncUtc);
+
+        _remote.AddFile("/test/news.txt", "remote news");
+        tree.Token = "2";
+        await WaitAsync(service, s => s.State == PairState.Idle && s.LastSyncUtc > synced);
+
+        Assert.Equal("remote news", File.ReadAllText(_local.Full("news.txt")));
+    }
+
+    [Fact]
+    public async Task No_change_checks_without_a_change_token()
+    {
+        _pair.RemoteCheckInterval = TimeSpan.FromMilliseconds(20);
+        var tree = new TreeRemoteStore(_remote) { Available = false };
+        await StartInSyncAsync(remote: tree);
+
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, tree.TokenChecks);
+    }
+
+    [Fact]
     public async Task Auth_failure_stops_until_sync_now()
     {
         var failing = new AuthFailingStore(_remote);
@@ -250,18 +287,18 @@ public sealed class PairServiceTests : IAsyncDisposable
         await WaitAsync(_service, s => s.State is PairState.NeedsAttention or PairState.Idle);
     }
 
-    private PairService Start(bool watch = false)
+    private PairService Start(bool watch = false, IRemoteStore? remote = null)
     {
-        _service = new PairService(_pair, _remote, NullLogger.Instance, new PairServiceOptions { Watch = watch, EchoWindow = TimeSpan.FromSeconds(5) });
+        _service = new PairService(_pair, remote ?? _remote, NullLogger.Instance, new PairServiceOptions { Watch = watch, EchoWindow = TimeSpan.FromSeconds(5) });
         _service.Start();
         return _service;
     }
 
     /// <summary>A service whose pair finished the initial sync (one local file).</summary>
-    private async Task<PairService> StartInSyncAsync(bool watch = false)
+    private async Task<PairService> StartInSyncAsync(bool watch = false, IRemoteStore? remote = null)
     {
         _local.File("base.txt", "base");
-        var service = Start(watch);
+        var service = Start(watch, remote);
         await WaitAsync(service, s => s.State == PairState.NeedsAttention);
         await service.ApproveAsync(service.Pending!.Ops, acceptGuards: false, TestContext.Current.CancellationToken);
         await SyncNowAndWaitAsync(service);

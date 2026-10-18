@@ -45,5 +45,6 @@ spec/                       this specification
 
 - `IRemoteStore` is the only remote abstraction; a future native-API store (provider API with
   server hashes, tree revisions — the old client used `TREE_REV_INFO` revisions) can replace WebDAV
-  without planner changes.
+  without planner changes. First step done: `MailRuStore` keeps every operation on WebDAV and adds the tree listing
+  and change token of the Mail.ru API through the optional `IRemoteTreeLister` ([§4.7](04-remote-webdav.md)).
 - Planner is a pure function `(L, R, B, settings) → Plan` — deterministic and unit-testable.

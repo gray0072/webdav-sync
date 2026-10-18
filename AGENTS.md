@@ -15,11 +15,12 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
 ## Layout
 
 - `src/WebDavSync.Core/` — engine, no UI references: `Model/` (keys, hash, entries, snapshots), `Local/`
-  (scanner, FileId, trash), `Remote/` (WebDAV client, crawler, probe), `Planning/` (pure planner, guards,
-  approval), `Execution/` (executor), `State/` (SQLite state DB), `Legacy/` (`.cloud.db` importer),
-  `Engine/` (cycle orchestration, pair setup), `Config/` (settings, markers, filters).
+  (scanner, FileId, trash), `Remote/` (WebDAV client, crawler, probe; `MailRu/`: Mail.ru API tree listing and
+  change token, §4.7), `Planning/` (pure planner, guards, approval), `Execution/` (executor), `State/` (SQLite state
+  DB), `Legacy/` (`.cloud.db` importer), `Engine/` (cycle orchestration, pair setup), `Config/` (settings, markers,
+  filters).
 - `src/WebDavSync.App/` — WinForms tray app `WebDavSync.exe` (`net10.0-windows`, §14.1) on top of `PairService` (Core).
-- `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `held`, `rule`,
+- `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `held`, `rule`, `crawl`,
   `secret`, `folders`, `status`.
 - `tools/WebDavSync.UiGallery/` — dev tool, not shipped: opens every window of the app with sample data, saves a PNG
   each and `layout.txt` (controls that overflow their parent, list column widths). Run it after UI changes:

@@ -9,6 +9,7 @@ using WebDavSync.Core.Local;
 using WebDavSync.Core.Model;
 using WebDavSync.Core.Planning;
 using WebDavSync.Core.Remote;
+using WebDavSync.Core.Remote.MailRu;
 using WebDavSync.Core.State;
 
 namespace WebDavSync.Cli;
@@ -646,6 +647,93 @@ internal static class Commands
             return 0;
         }));
         return command;
+    }
+
+    public static Command Crawl(Option<string?> dataDir)
+    {
+        var pairArg = new Argument<string>("pair") { Description = "Pair name or id." };
+        var compare = new Option<bool>("--compare") { Description = "Mail.ru: also crawl folder by folder over WebDAV and compare the two snapshots." };
+        var command = new Command("crawl", "Crawl the pair's remote side as a sync cycle does and print a summary (§4.3); read-only.") { pairArg, compare };
+        command.SetAction((parse, ct) => Run(parse.GetValue(dataDir), "crawl", async ctx =>
+        {
+            var pair = ctx.RequirePair(parse.GetValue(pairArg)!);
+            using var client = ctx.CreateClient(pair);
+            var snapshot = await CrawlAndPrintAsync(client, pair, ct);
+            var source = client is MailRuStore mailRu
+                ? snapshot.ChangeToken is not null ? "Mail.ru API tree listing" : $"WebDAV, Mail.ru API not used: {mailRu.ApiProblem ?? "the remote root does not exist"}"
+                : "WebDAV";
+            Console.WriteLine($"  source: {source}{(snapshot.ChangeToken is null ? string.Empty : $", change token {snapshot.ChangeToken}")}");
+            if (client is IRemoteTreeLister lister)
+            {
+                Console.WriteLine($"  change check now: {await lister.GetChangeTokenAsync(pair.RemoteRootNormalized, ct) ?? "not available"}");
+            }
+            if (!parse.GetValue(compare))
+            {
+                return snapshot.IsComplete ? 0 : 2;
+            }
+
+            if (client is not MailRuStore store)
+            {
+                throw new CliException("--compare needs a Mail.ru pair with useMailRuApi=true.");
+            }
+
+            Console.WriteLine("WebDAV, folder by folder:");
+            var webDav = await CrawlAndPrintAsync(store.WebDav, pair, ct);
+            var differences = CompareSnapshots(snapshot, webDav);
+            Console.WriteLine(differences.Count == 0 ? "Snapshots are identical." : $"Snapshots differ in {differences.Count} places:");
+            foreach (var line in differences.Take(40))
+            {
+                Console.WriteLine("  " + line);
+            }
+
+            if (differences.Count > 40)
+            {
+                Console.WriteLine($"  ... and {differences.Count - 40} more");
+            }
+
+            return differences.Count == 0 && snapshot.IsComplete && webDav.IsComplete ? 0 : 2;
+        }));
+        return command;
+    }
+
+    private static async Task<RemoteSnapshot> CrawlAndPrintAsync(IRemoteStore store, PairSettings pair, CancellationToken ct)
+    {
+        var progress = new ConsoleProgress();
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var snapshot = await new RemoteScanner(store, SyncFilter.For(pair), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, pair.MaxParallelRequests)
+            .CrawlAsync(pair.RemoteRootNormalized, string.Empty, new InlineProgress<int>(n => progress.Report($"Crawling remote: {n} folders")), ct);
+        progress.Done();
+        var files = snapshot.Entries.Values.Where(e => !e.IsDir).ToList();
+        Console.WriteLine(
+            $"  {files.Count} files ({SafetyGuards.Size(files.Sum(f => f.Size))}), {snapshot.Entries.Count - files.Count} folders, " +
+            $"{(snapshot.IsComplete ? "complete" : "INCOMPLETE")}, {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds:0.0} s");
+        PrintWarnings("  Warnings", snapshot.Warnings, 10);
+        return snapshot;
+    }
+
+    /// <summary>Every difference between two snapshots of the same remote, one line each.</summary>
+    internal static List<string> CompareSnapshots(RemoteSnapshot a, RemoteSnapshot b)
+    {
+        var lines = new List<string>();
+        foreach (var key in a.Entries.Keys.Union(b.Entries.Keys).Order(StringComparer.Ordinal))
+        {
+            var inA = a.Entries.TryGetValue(key, out var x);
+            var inB = b.Entries.TryGetValue(key, out var y);
+            if (!inA || !inB)
+            {
+                lines.Add($"{(inA ? "only in the first" : "only in the second")}: {(x ?? y)!.Path}");
+            }
+            else if (x != y)
+            {
+                lines.Add($"differs: {x} vs {y}");
+            }
+        }
+
+        lines.AddRange(a.ListedFolders.Except(b.ListedFolders).Select(k => $"listed only in the first: '{k}'"));
+        lines.AddRange(b.ListedFolders.Except(a.ListedFolders).Select(k => $"listed only in the second: '{k}'"));
+        lines.AddRange(a.SkippedKeys.Except(b.SkippedKeys).Select(k => $"skipped only in the first: '{k}'"));
+        lines.AddRange(b.SkippedKeys.Except(a.SkippedKeys).Select(k => $"skipped only in the second: '{k}'"));
+        return lines;
     }
 
     private static string TopKey(string name) => PathKey.FromPath(name.Replace('\\', '/').Trim('/'));

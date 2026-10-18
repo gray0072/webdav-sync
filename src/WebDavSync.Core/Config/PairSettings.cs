@@ -83,6 +83,18 @@ public sealed class PairSettings
 
     public bool SetLocalMtimeFromRemote { get; set; } = true;
 
+    /// <summary>
+    /// Mail.ru endpoint only: list the remote tree in one request and check it for changes with the Mail.ru API (§4.7).
+    /// Needs an app password with full access; without it (or when the API fails) everything goes over WebDAV.
+    /// </summary>
+    public bool UseMailRuApi { get; set; } = true;
+
+    /// <summary>
+    /// How often the remote change token is checked between polls (§8), when the remote has one (Mail.ru API); a change
+    /// starts a cycle. Zero: off.
+    /// </summary>
+    public TimeSpan RemoteCheckInterval { get; set; } = TimeSpan.FromMinutes(1);
+
     /// <summary>Excluded folders, relative paths (any depth); top-level ones form the selective sync (§12.2).</summary>
     public List<string> ExcludedFolders { get; set; } = [];
 

@@ -71,8 +71,9 @@ internal sealed class CliContext : IDisposable
             },
             _factory.CreateLogger("webdav"));
 
-    public WebDavClient CreateClient(PairSettings pair) =>
-        CreateClient(pair.RemoteUrl, pair.User, pair.MaxRequestsPerSecond, pair.RemoteHashProperty, RequirePassword(pair));
+    /// <summary>The pair's remote client: WebDAV, plus the Mail.ru API on a Mail.ru endpoint (§4.7).</summary>
+    public IRemoteClient CreateClient(PairSettings pair) =>
+        RemoteClientFactory.Create(pair, RequirePassword(pair), _factory.CreateLogger("webdav"), _factory.CreateLogger("mailru"));
 
     /// <summary>The content hash property from the newest stored probe report for the endpoint's host, if any.</summary>
     public string? FindProbedHashProperty(string url)

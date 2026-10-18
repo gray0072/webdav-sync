@@ -47,4 +47,11 @@ public sealed class RemoteSnapshot(
     IReadOnlySet<string> listedFolders,
     IReadOnlySet<string>? skippedKeys = null,
     IReadOnlyList<string>? warnings = null)
-    : Snapshot<RemoteEntry>(entries, listedFolders, skippedKeys, warnings);
+    : Snapshot<RemoteEntry>(entries, listedFolders, skippedKeys, warnings)
+{
+    /// <summary>
+    /// The remote root's change token at the time of this crawl (§4.3 #0); <c>null</c> when the remote has none or the
+    /// crawl did not come from a tree listing of the whole pair.
+    /// </summary>
+    public string? ChangeToken { get; init; }
+}

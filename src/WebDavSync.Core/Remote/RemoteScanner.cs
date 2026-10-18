@@ -9,6 +9,8 @@ namespace WebDavSync.Core.Remote;
 /// to <see cref="Snapshot{TEntry}.ListedFolders"/> only when its listing is complete (§6.8).
 /// Up to <paramref name="parallel"/> listings are in flight (within the client's request rate limit); results are
 /// processed one at a time, so the snapshot does not depend on the order in which listings arrive.
+/// A crawl from a store with a tree listing (<see cref="IRemoteTreeLister"/>, §4.3 #0) takes the folders' listings from
+/// one tree request and lists only the folders missing from it; without a tree it lists every folder.
 /// </summary>
 public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger logger, int parallel = 1)
 {
@@ -18,19 +20,23 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
     {
         var state = new CrawlState();
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
-        var requests = await RunAsync(
+        var tree = store is IRemoteTreeLister lister
+            ? await lister.ListTreeAsync(PathKey.ToRemoteFull(remoteRoot, subtree), ct).ConfigureAwait(false)
+            : null;
+        await RunAsync(
             remoteRoot,
             [subtree],
             state,
             (relDir, listing) => AddChildren(state, relDir, listing, _ => true),
             relDir => relDir != subtree && Vanished(state, relDir),
             progress,
-            ct).ConfigureAwait(false);
+            ct,
+            tree).ConfigureAwait(false);
 
         logger.LogInformation(
-            "Remote crawl of {Root}/{Subtree}: {Entries} entries, {Listed} folders listed, {Requests} requests, {Warnings} warnings in {Seconds:0.0} s ({Parallel} in parallel)",
-            remoteRoot, subtree, state.Entries.Count, state.Listed.Count, requests, state.Warnings.Count, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds, parallel);
-        return state.ToSnapshot();
+            "Remote crawl of {Root}/{Subtree}: {Entries} entries, {Listed} folders listed ({FromTree} from the tree listing), {Requests} requests, {Warnings} warnings in {Seconds:0.0} s ({Parallel} in parallel)",
+            remoteRoot, subtree, state.Entries.Count, state.Listed.Count, state.TreeListings, state.Requests, state.Warnings.Count, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds, parallel);
+        return state.ToSnapshot(subtree.Length == 0 ? tree?.ChangeToken : null);
     }
 
     /// <summary>
@@ -120,7 +126,8 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
         Func<string, RemoteListing, IEnumerable<string>> onListing,
         Func<string, bool> onVanished,
         IProgress<int>? progress,
-        CancellationToken ct)
+        CancellationToken ct,
+        RemoteTree? tree = null)
     {
         var queue = new Queue<string>(seeds);
         var requests = 0;
@@ -182,8 +189,18 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
         return requests;
 
         // Async wrapper: a store that throws synchronously still yields a faulted task.
-        async Task<RemoteListing> ListAsync(string relDir) =>
-            await store.ListAsync(PathKey.ToRemoteFull(remoteRoot, relDir), cts.Token).ConfigureAwait(false);
+        async Task<RemoteListing> ListAsync(string relDir)
+        {
+            var path = PathKey.ToRemoteFull(remoteRoot, relDir);
+            if (tree is not null && tree.Listings.TryGetValue(path, out var listed))
+            {
+                Interlocked.Increment(ref state.TreeListings);
+                return listed;
+            }
+
+            Interlocked.Increment(ref state.Requests);
+            return await store.ListAsync(path, cts.Token).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Vanished mid-crawl: the parent listing is stale, so it can no longer prove deletions.</summary>
@@ -256,6 +273,12 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
 
         public List<string> Warnings { get; } = [];
 
+        /// <summary>Per-folder listing requests (those not answered by the tree listing).</summary>
+        public int Requests;
+
+        /// <summary>Folders whose listing came from the tree listing.</summary>
+        public int TreeListings;
+
         public static CrawlState From(RemoteSnapshot snapshot) => new()
         {
             Entries = new Dictionary<string, RemoteEntry>(snapshot.Entries, StringComparer.Ordinal),
@@ -275,6 +298,6 @@ public sealed class RemoteScanner(IRemoteStore store, SyncFilter filter, ILogger
             Skipped.RemoveWhere(k => PathKey.IsUnder(k.Split('\u0000')[0], key));
         }
 
-        public RemoteSnapshot ToSnapshot() => new(Entries, Listed, Skipped, Warnings);
+        public RemoteSnapshot ToSnapshot(string? changeToken = null) => new(Entries, Listed, Skipped, Warnings) { ChangeToken = changeToken };
     }
 }

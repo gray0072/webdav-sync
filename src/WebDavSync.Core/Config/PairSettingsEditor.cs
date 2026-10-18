@@ -48,6 +48,8 @@ public static class PairSettingsEditor
         ["localVerifyInterval"] = (p, v) => p.LocalVerifyInterval = IsNone(v) ? null : ParseDuration(v, TimeSpan.FromDays(1), TimeSpan.FromDays(3650)),
         ["hashLimitMBps"] = (p, v) => p.HashLimitMBps = ParseDouble(v, min: 0, max: 100_000),
         ["setLocalMtimeFromRemote"] = (p, v) => p.SetLocalMtimeFromRemote = ParseBool(v),
+        ["useMailRuApi"] = (p, v) => p.UseMailRuApi = ParseBool(v),
+        ["remoteCheckInterval"] = (p, v) => p.RemoteCheckInterval = ParseDuration(v, TimeSpan.Zero, TimeSpan.FromDays(1)),
     };
 
     /// <summary>Names accepted by <see cref="Set"/>, in schema order.</summary>

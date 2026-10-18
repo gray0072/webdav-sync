@@ -30,7 +30,7 @@ public sealed class WebDavOptions
 }
 
 /// <summary>Thin WebDAV client over <see cref="HttpClient"/> (§2.2).</summary>
-public sealed class WebDavClient : IRemoteStore, IDisposable
+public sealed class WebDavClient : IRemoteClient
 {
     internal const string ListBody =
         """<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getcontentlength/><d:getlastmodified/><d:getetag/><d:getcontenttype/></d:prop></d:propfind>""";

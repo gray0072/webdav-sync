@@ -35,6 +35,7 @@ public static class MetaKeys
     public const string LastCycle = "last_cycle";
     public const string RemoteMarkerCreated = "remote_marker_created";
     public const string LastFullCrawl = "last_full_crawl";
+    public const string RemoteChangeToken = "remote_change_token";
     public const string ExcludedFolders = "excluded_folders";
     public const string VerifyAt = "local_verify_at";
     public const string VerifyCursor = "local_verify_cursor";

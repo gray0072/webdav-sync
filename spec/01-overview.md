@@ -26,7 +26,8 @@ state obvious: idle, working, paused, waiting for approval, conflict, error.
 - Multiple accounts in one UI (the design must not preclude multiple sync pairs, but v1 UI ships with one).
 - Sharing, public links, versions browser.
 - Non-Windows platforms (Core library stays platform-neutral where cheap).
-- Native provider APIs (non-WebDAV). Keep `IRemoteStore` abstract so it can be added later (see [§2.3](02-architecture.md)).
+- Native provider APIs as a replacement of WebDAV. Keep `IRemoteStore` abstract so it can be added later (see
+  [§2.3](02-architecture.md)); the Mail.ru API is used for reads only (tree listing, change token, [§4.7](04-remote-webdav.md)).
 
 ## 1.3 Terminology
 

@@ -86,6 +86,7 @@ meta(key PK, value)
 - `remote_confirmed = 0` for entries imported from `.cloud.db` until the first crawl adopts them ([§3.5](03-legacy-state.md)).
 - Journal status: `Running`, `Done`, `Failed`, `Skipped`, `Interrupted` ([§6.7](06-sync-algorithm.md)).
 - `meta` keys: `schema_version`, `pair_id`, `initial_sync_done`, `remote_marker_created`, `last_full_crawl` (UTC ticks),
+  `remote_change_token` (the remote root's change token at the last complete full crawl, [§4.3](04-remote-webdav.md)),
   `excluded_folders` (JSON keys the state was last planned with, §12.2), `local_verify_at`, `local_verify_cursor`
   ([§5.3](05-local.md)), `legacy_import`
   (import stats, JSON), `last_cycle` (summary, JSON), `capabilities` (reserved for probe results).
@@ -131,6 +132,8 @@ Camel-case JSON, enums as strings. Top level: `{ "pairs": [ <pair>, ... ], "lowP
 | `localVerifyInterval` | duration? | off | Rolling verify ([§5.3](05-local.md)); 1 day – 10 years; `none` = off. |
 | `hashLimitMBps` | double | 0 | Read rate of hashing, MB/s ([§11](11-bandwidth-pause.md)); 0 = unlimited. |
 | `setLocalMtimeFromRemote` | bool | true | [§4.6](04-remote-webdav.md). |
+| `useMailRuApi` | bool | true | Mail.ru endpoint only: tree listing and change token over the Mail.ru API ([§4.7](04-remote-webdav.md)); needs an app password with full access, otherwise WebDAV only. |
+| `remoteCheckInterval` | duration | `00:01:00` | Remote change check between polls ([§8](08-timing.md)); 0 = off; up to 1 day. |
 | `excludedFolders` | string[] | `[]` | Relative paths (any depth); top-level ones are the selective sync ([§12.2](12-filters.md)); CLI `wds folders`. |
 | `excludePatterns` | string[] | `[]` | Globs (`*`, `?`); without `/` matched against the name, otherwise against the path ([§12.3](12-filters.md)). |
 | `autoApprove` | `{type, folder, overwrite}[]` | `[]` | "Approve and remember" rules ([§10](10-modes-approval.md)); CLI `wds rule`. |

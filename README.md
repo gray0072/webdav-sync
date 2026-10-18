@@ -95,7 +95,9 @@ updated only after the result is verified on the target side.
 - Windows 10 or 11 (x64)
 - [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - A WebDAV account. For **Mail.ru Cloud**: an app password (Mail.ru account → *Security* → *Passwords for external
-  applications*), endpoint `https://webdav.cloud.mail.ru/`.
+  applications*), endpoint `https://webdav.cloud.mail.ru/`. Give the app password **full access ("Mail, Cloud and
+  Calendar")**: then the whole cloud is read in one request and cloud changes are noticed within a minute. A
+  WebDAV-only app password works too, just slower (the cloud is read folder by folder and checked every 15 minutes).
 
 ## Install
 
@@ -174,6 +176,7 @@ useful for scripting, diagnostics and the first cycles of a big folder.
 | `wds held <pair> [--release <path>] [--all]` | List or release held (rejected) operations |
 | `wds rule list\|add\|remove <pair>` | Auto-approve rules |
 | `wds status <pair>` | State of the pair |
+| `wds crawl <pair> [--compare]` | Read the cloud side as a sync cycle does (read-only); Mail.ru: compare with a folder-by-folder WebDAV read |
 
 Run `wds <command> --help` for all options.
 
@@ -185,6 +188,8 @@ Settings live in `data\settings.json`; change them from the tray or with `wds pa
 |---|---|---|
 | `mode` | `ApproveAll` | See [Modes](#modes) |
 | `remotePollInterval` | `15m` | How often the whole cloud is checked; local changes are picked up within seconds |
+| `remoteCheckInterval` | `1m` | Mail.ru with a full-access app password: how often the cloud is asked whether anything changed (one small request) |
+| `useMailRuApi` | `true` | Mail.ru: read the cloud with the Mail.ru API when the app password allows it; `false` = WebDAV only |
 | `maxOpsPerCycle` | none | Execute at most N operations per cycle (handy for first runs) |
 | `massDeleteCount` / `massDeletePercent` | `50` / `5` | Mass-delete guard thresholds |
 | `conflictWinner` | `Local` | Which version keeps the original name in a conflict |

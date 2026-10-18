@@ -32,7 +32,7 @@ internal sealed class SetupWizard : ScaledForm
     private readonly TextBox _url = new() { Width = 380, Text = MailRuUrl, Enabled = false };
     private readonly TextBox _login = new() { Width = 380, PlaceholderText = "you@mail.ru" };
     private readonly TextBox _password = new() { Width = 380, UseSystemPasswordChar = true };
-    private readonly LinkLabel _passwordHelp = new() { AutoSize = true, Text = "Mail.ru needs an app password, not your usual one — create it here" };
+    private readonly LinkLabel _passwordHelp = new() { AutoSize = true, Text = "Mail.ru needs an app password, not your usual one — create it here, with full access (Mail, Cloud and Calendar) for fast change checks" };
     private readonly Label _accountStatus = new() { AutoSize = true, MaximumSize = new Size(540, 0) };
 
     // Page 2: folders.

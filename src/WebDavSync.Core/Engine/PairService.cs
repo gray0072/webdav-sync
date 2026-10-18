@@ -76,6 +76,9 @@ public sealed class PairService : IAsyncDisposable
     private bool _continue;
     private RemoteSnapshot? _cache;
     private DateTime? _lastFullCrawl;
+    private string? _remoteToken;
+    private DateTime? _lastRemoteCheck;
+    private bool _remoteChanged;
     private readonly HashSet<string> _refresh = new(StringComparer.Ordinal);
     private DateTime? _firstChange;
     private DateTime? _lastChange;
@@ -317,9 +320,17 @@ public sealed class PairService : IAsyncDisposable
                 continue;
             }
 
+            var check = NextRemoteCheck(now);
+            if (check is { } c && c <= now)
+            {
+                await CheckRemoteAsync(stop).ConfigureAwait(false);
+                continue;
+            }
+
+            var wake = due is null ? check : check is null ? due : Min(due.Value, check.Value);
             try
             {
-                await _wake.WaitAsync(due is { } d ? Clamp(d - now) : Timeout.InfiniteTimeSpan, stop).ConfigureAwait(false);
+                await _wake.WaitAsync(wake is { } d ? Clamp(d - now) : Timeout.InfiniteTimeSpan, stop).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
@@ -357,6 +368,11 @@ public sealed class PairService : IAsyncDisposable
                 return (now, "sync now", false);
             }
 
+            if (_remoteChanged)
+            {
+                return (now, "remote change", false);
+            }
+
             if (_continue)
             {
                 return (now, "more ops", cacheUsable);
@@ -382,6 +398,52 @@ public sealed class PairService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// When the remote change token is checked next (§8): only with a store that has one, after a cycle that recorded a
+    /// token, and while no pause or retry is pending.
+    /// </summary>
+    private DateTime? NextRemoteCheck(DateTime now)
+    {
+        lock (_lock)
+        {
+            if (_remote is not IRemoteTreeLister || _remoteToken is null || Pair.RemoteCheckInterval <= TimeSpan.Zero ||
+                _paused || _remoteChanged || _retryAt is not null || _retryOnlyManually)
+            {
+                return null;
+            }
+
+            return (_lastRemoteCheck ?? now) + Pair.RemoteCheckInterval;
+        }
+    }
+
+    /// <summary>One cheap request; a token different from the last full crawl's starts a cycle with a full crawl.</summary>
+    private async Task CheckRemoteAsync(CancellationToken stop)
+    {
+        string? token;
+        try
+        {
+            token = await ((IRemoteTreeLister)_remote).GetChangeTokenAsync(Pair.RemoteRootNormalized, stop).ConfigureAwait(false);
+        }
+        catch (RemoteException ex)
+        {
+            _logger.LogInformation("Pair {Pair}: remote change check failed: {Message}", Pair.Name, ex.Message);
+            token = null;
+        }
+
+        string? previous;
+        lock (_lock)
+        {
+            _lastRemoteCheck = DateTime.UtcNow;
+            previous = _remoteToken;
+            _remoteChanged = token is not null && previous is not null && token != previous;
+        }
+
+        if (_remoteChanged)
+        {
+            _logger.LogInformation("Pair {Pair}: remote changed (token {Previous} -> {Token})", Pair.Name, previous, token);
+        }
+    }
+
     private async Task RunCycleAsync(string reason, bool incremental, CancellationToken stop)
     {
         PlanOptions options;
@@ -391,6 +453,7 @@ public sealed class PairService : IAsyncDisposable
             startup = _startup;
             _startup = false;
             _syncNow = false;
+            _remoteChanged = false;
             _continue = false;
             _firstChange = null;
             _lastChange = null;
@@ -426,6 +489,8 @@ public sealed class PairService : IAsyncDisposable
             lock (_lock)
             {
                 _cache = cycle.Remote.IsComplete ? cycle.Remote : null;
+                _remoteToken = cycle.RemoteChangeToken;
+                _lastRemoteCheck = DateTime.UtcNow;
                 if (!cycle.RemoteFromCache)
                 {
                     _lastFullCrawl = DateTime.UtcNow;

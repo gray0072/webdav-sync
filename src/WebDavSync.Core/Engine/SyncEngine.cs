@@ -31,6 +31,12 @@ public sealed record CyclePlan(
 
     /// <summary>The remote snapshot is a refreshed cached one, not a full crawl (§4.3 #3).</summary>
     public bool RemoteFromCache { get; init; }
+
+    /// <summary>
+    /// The remote root's change token as of the last complete full crawl (§4.3 #0), also for a cached snapshot;
+    /// <c>null</c> when unknown.
+    /// </summary>
+    public string? RemoteChangeToken { get; init; }
 }
 
 /// <summary>Per-cycle user input for planning.</summary>
@@ -246,8 +252,12 @@ public sealed class SyncEngine : IDisposable
                 {
                     Store.LastFullCrawlUtc = DateTime.UtcNow;
                 }
+
+                Store.SetMeta(MetaKeys.RemoteChangeToken, remote.IsComplete ? remote.ChangeToken : null);
             }
         }
+
+        var remoteChangeToken = rootItem is null ? null : Store.GetMeta(MetaKeys.RemoteChangeToken);
 
         var verify = VerifySlice(baseEntries);
         status?.Report(verify.Count > 0 ? $"Scanning local (verifying {verify.Count} files)..." : "Scanning local...");
@@ -326,7 +336,7 @@ public sealed class SyncEngine : IDisposable
         _logger.LogInformation(
             "Cycle {Cycle}: plan {Ops} ops ({Actions} actions), {Warnings} warnings, guards: {Trips} trips, {Errors} errors",
             cycleId, plan.Ops.Count, plan.ActionOps.Count(), plan.Warnings.Count, guards.Trips.Count, guards.Errors.Count);
-        return new CyclePlan(cycleId, plan, guards, local, remote, baseEntries.Count, unionMode, createRoot, createMarker, notes) { Held = held, RemoteFromCache = remoteFromCache };
+        return new CyclePlan(cycleId, plan, guards, local, remote, baseEntries.Count, unionMode, createRoot, createMarker, notes) { Held = held, RemoteFromCache = remoteFromCache, RemoteChangeToken = remoteChangeToken };
     }
 
     /// <summary>Puts ops into the held list (§10): they are not proposed again until their item changes on either side.</summary>
