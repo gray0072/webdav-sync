@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using WebDavSync.Core.Config;
 using WebDavSync.Core.Engine;
+using WebDavSync.Core.Updates;
 
 namespace WebDavSync.App;
 
@@ -18,6 +19,10 @@ internal sealed class TrayContext : ApplicationContext
     private readonly SynchronizationContext _ui;
     private readonly Dictionary<string, DateTime> _lastNotified = [];
     private readonly Dictionary<PairRuntime, ApprovalsForm> _approvals = [];
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
+    private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 2 * 60 * 1000 };
+    private Action? _balloonClick;
+    private ReleaseInfo? _available;
     private int _frame;
     private PairState _top;
     private bool _exiting;
@@ -34,7 +39,15 @@ internal sealed class TrayContext : ApplicationContext
                 OpenPendingOrFolder();
             }
         };
-        _tray.BalloonTipClicked += (_, _) => OpenPendingOrFolder();
+        _tray.BalloonTipClicked += (_, _) => (_balloonClick ?? OpenPendingOrFolder)();
+
+        // Automatic update check (§14.3): first two minutes after start, then every hour whether one is due.
+        _updateTimer.Tick += async (_, _) =>
+        {
+            _updateTimer.Interval = 60 * 60 * 1000;
+            await AutoCheckForUpdatesAsync();
+        };
+        _updateTimer.Start();
         _menu.Opening += (_, _) => BuildMenu();
         _animation.Tick += (_, _) => _tray.Icon = _icons.Get(_top, ++_frame);
 
@@ -171,7 +184,118 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         _lastNotified[key] = DateTime.UtcNow;
+        _balloonClick = OpenPendingOrFolder;
         _tray.ShowBalloonTip(10_000, "WebDavSync", text, icon);
+    }
+
+    // ---------------------------------------------------------------- updates (§14.3)
+
+    private async Task AutoCheckForUpdatesAsync()
+    {
+        var settings = AppSettings.Load(_host.Paths.SettingsFile);
+        if (!UpdateChecker.IsDue(settings.UpdateCheck, settings.LastUpdateCheckUtc, DateTime.UtcNow))
+        {
+            return;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            var latest = await new UpdateChecker(Http).GetLatestAsync(cts.Token);
+            _host.SaveAppSettings(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
+            if (latest is null || latest.Version <= UpdateChecker.CurrentVersion)
+            {
+                return;
+            }
+
+            _available = latest;
+            if (settings.NotifiedVersion != latest.Version.ToString())
+            {
+                _host.SaveAppSettings(s => s.NotifiedVersion = latest.Version.ToString());
+                _balloonClick = () => ShowUpdate(latest);
+                _tray.ShowBalloonTip(15_000, "WebDavSync", $"Version {latest.Version} is available (you have {UpdateChecker.CurrentVersion}). Click here to see what is new and update.", ToolTipIcon.Info);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or IOException)
+        {
+            // Offline or GitHub unavailable: try again at the next hourly tick (the last check time is not updated).
+            _host.Logger.LogInformation("Update check failed: {Message}", ex.Message);
+        }
+    }
+
+    private async Task CheckForUpdatesNowAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            var latest = await new UpdateChecker(Http).GetLatestAsync(cts.Token);
+            _host.SaveAppSettings(s => s.LastUpdateCheckUtc = DateTime.UtcNow);
+            if (latest is null || latest.Version <= UpdateChecker.CurrentVersion)
+            {
+                _available = null;
+                MessageBox.Show($"You have the latest version: WebDavSync {UpdateChecker.CurrentDescription}.", "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _available = latest;
+            ShowUpdate(latest);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException or IOException)
+        {
+            MessageBox.Show("Cannot check for updates: " + ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private async void ShowUpdate(ReleaseInfo release)
+    {
+        using var form = new UpdateForm(release, Http);
+        if (form.ShowDialog() != DialogResult.OK || form.NewExe is not { } newExe)
+        {
+            return;
+        }
+
+        try
+        {
+            _host.Logger.LogInformation("Updating to {Version}", release.Version);
+            Updater.SwapAndRestart(newExe, _host.Paths.DataDir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show("The update could not be installed: " + ex.Message, "WebDavSync", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        await ExitAsync();
+    }
+
+    private ToolStripMenuItem UpdatesMenu()
+    {
+        var settings = AppSettings.Load(_host.Paths.SettingsFile);
+        var menu = new ToolStripMenuItem("Updates");
+        menu.DropDownItems.Add(new ToolStripMenuItem($"You have {UpdateChecker.CurrentDescription}") { Enabled = false });
+        menu.DropDownItems.Add("Check for updates now…", null, async (_, _) => await CheckForUpdatesNowAsync());
+        menu.DropDownItems.Add(new ToolStripSeparator());
+        menu.DropDownItems.Add(new ToolStripMenuItem("Check automatically:") { Enabled = false });
+        foreach (var (interval, text) in new[]
+                 {
+                     (UpdateCheckInterval.Daily, "Every day"),
+                     (UpdateCheckInterval.Weekly, "Every week"),
+                     (UpdateCheckInterval.Monthly, "Every month"),
+                     (UpdateCheckInterval.Never, "Never"),
+                 })
+        {
+            menu.DropDownItems.Add(new ToolStripMenuItem("    " + text, null, (_, _) => _host.SaveAppSettings(s => s.UpdateCheck = interval))
+            {
+                Checked = settings.UpdateCheck == interval,
+            });
+        }
+
+        if (settings.LastUpdateCheckUtc is { } last)
+        {
+            menu.DropDownItems.Add(new ToolStripMenuItem($"Last checked {last.ToLocalTime():g}") { Enabled = false });
+        }
+
+        return menu;
     }
 
     // ---------------------------------------------------------------- menu
@@ -179,6 +303,13 @@ internal sealed class TrayContext : ApplicationContext
     private void BuildMenu()
     {
         _menu.Items.Clear();
+        _menu.Items.Add(new ToolStripMenuItem($"WebDavSync {UpdateChecker.CurrentDescription}") { Enabled = false });
+        if (_available is { } update && update.Version > UpdateChecker.CurrentVersion)
+        {
+            _menu.Items.Add(new ToolStripMenuItem($"Update to {update.Version}…", null, (_, _) => ShowUpdate(update)) { Font = new Font(_menu.Font, FontStyle.Bold) });
+        }
+
+        _menu.Items.Add(new ToolStripSeparator());
         if (_host.Pairs.Count == 0)
         {
             _menu.Items.Add(new ToolStripMenuItem("Set up sync…", null, (_, _) => ShowSetup(firstRun: true)) { Font = new Font(_menu.Font, FontStyle.Bold) });
@@ -215,8 +346,9 @@ internal sealed class TrayContext : ApplicationContext
             v => SetLimits(_host.LowPriority, (int)v!)));
         _menu.Items.Add(performance);
         _menu.Items.Add(new ToolStripMenuItem("Start with Windows", null, (_, _) => SetStartup(StartupCommand() is null)) { Checked = StartupCommand() is not null });
+        _menu.Items.Add(UpdatesMenu());
         _menu.Items.Add("Open log folder", null, (_, _) => Open(_host.Paths.LogsDir));
-        _menu.Items.Add($"About WebDavSync {Application.ProductVersion.Split('+')[0]}…", null, (_, _) => Open("https://github.com/gray0072/webdav-sync"));
+        _menu.Items.Add("WebDavSync on GitHub…", null, (_, _) => Open("https://github.com/" + UpdateChecker.Repository));
         _menu.Items.Add("Exit", null, async (_, _) => await ExitAsync());
     }
 
@@ -468,6 +600,7 @@ internal sealed class TrayContext : ApplicationContext
         if (disposing)
         {
             _animation.Dispose();
+            _updateTimer.Dispose();
             _tray.Dispose();
             _menu.Dispose();
             _icons.Dispose();

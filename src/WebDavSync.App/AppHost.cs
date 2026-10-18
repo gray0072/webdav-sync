@@ -81,6 +81,14 @@ internal sealed class AppHost : IDisposable
     public int CpuLimitPercent { get; private set; }
 
     /// <summary>Changes and saves the app-level limits (§11).</summary>
+    /// <summary>Changes app-level settings in <c>settings.json</c>, re-reading it first so CLI edits are not lost.</summary>
+    public void SaveAppSettings(Action<AppSettings> change)
+    {
+        var settings = AppSettings.Load(Paths.SettingsFile);
+        change(settings);
+        settings.Save(Paths.SettingsFile);
+    }
+
     public void SetLimits(bool lowPriority, int cpuLimitPercent)
     {
         var settings = AppSettings.Load(Paths.SettingsFile);

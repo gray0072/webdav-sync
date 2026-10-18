@@ -35,6 +35,7 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
 - CI: `.github/workflows/ci.yml` (build + unit tests on Windows). A release is made by pushing a tag `vX.Y.Z`:
   `.github/workflows/release.yml` tests, runs `scripts/publish.ps1 -AppOnly` (the CLI is not shipped), zips with LICENSE and READMEs, and creates the
   GitHub release with notes from `docs/releases/vX.Y.Z.md`.
+- Release notes are in English only: no "Коротко по-русски" or other translated summaries.
 
 ## Storage
 
@@ -89,3 +90,6 @@ arguments like `/webdavsync-test` are rewritten into Windows paths.
 - Every planner rule and edge case from [§6.2](spec/06-sync-algorithm.md) / [§13](spec/13-edge-cases.md) gets a unit test.
 - Do not test against the real `D:\Cloud` or the real cloud from automated tests; use temp folders and a local WebDAV server.
 - When behavior differs from the spec, update the matching file in `spec/` in the same change.
+- UI forms are never laid out in fixed pixels: size bars, buttons, texts and list columns from the content
+  (`AutoSize`, layout panels, DPI-aware measurements), so every window works at 100 %, 150 % and other Windows
+  display scaling and with larger text. Check with `WebDavSync.UiGallery` (normal, `--dpi-unaware`, `--font-scale 1.5`).

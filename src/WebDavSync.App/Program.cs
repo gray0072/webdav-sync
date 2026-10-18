@@ -21,6 +21,23 @@ internal static class Program
             return 1;
         }
 
+        // After an update the new exe is started by the old one: wait until it has exited and released the mutex.
+        var wait = Array.IndexOf(args, "--wait-for-exit");
+        if (wait >= 0 && wait + 1 < args.Length && int.TryParse(args[wait + 1], out var oldPid))
+        {
+            try
+            {
+                using var old = System.Diagnostics.Process.GetProcessById(oldPid);
+                old.WaitForExit(TimeSpan.FromMinutes(5));
+            }
+            catch (ArgumentException)
+            {
+                // Already gone.
+            }
+        }
+
+        Updater.CleanUp();
+
         // One instance per Windows user, whatever folder it runs from: two copies would sync the same folders twice.
         using var mutex = new Mutex(initiallyOwned: true, @"Local\WebDavSync", out var created);
         if (!created)

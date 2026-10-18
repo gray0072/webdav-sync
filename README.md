@@ -146,9 +146,13 @@ Rules (`wds rule add cloud --type Download --folder "Camera Uploads"`) approve m
 | Red badge | Error (e.g. wrong password) |
 | Grey cloud | Offline or paused |
 
-Menu: *Open folder* · *Open cloud in browser* · *Sync now* · *Pause* (15 min, 1 h, until tomorrow, until resumed) ·
+The menu starts with the version and its release date. Menu: *Open folder* · *Open cloud in browser* · *Sync now* · *Pause* (15 min, 1 h, until tomorrow, until resumed) ·
 *Approvals* · *Choose folders* · *Settings* (mode, cloud check interval, local verify, hashing speed, password) ·
-*Performance* (low priority, CPU limit) · *Start with Windows* · *Open log folder* · *About*.
+*Performance* (low priority, CPU limit) · *Start with Windows* · *Updates* (check now; check automatically every
+day, week, month or never — daily by default) · *Open log folder* · *WebDavSync on GitHub*.
+
+New versions are found automatically: *Update to X…* in the menu shows what is new and installs it with one click
+(the download is verified against its SHA-256 checksum; settings and sync state are kept).
 
 ## Command line (advanced)
 

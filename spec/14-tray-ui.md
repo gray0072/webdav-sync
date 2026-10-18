@@ -53,6 +53,24 @@ Rate-limited (one per category per 10 min), never a toast per file.
   asks for confirmation and states that nothing is deleted (§12.2).
 - Not yet: Activity, Conflicts and Errors windows, Settings window, Windows toasts, removing a pair.
 
+## 14.3 Version and updates
+
+- The menu starts with a disabled line `WebDavSync <version> (<build date>)`; the build date is assembly metadata
+  (`BuildDate`, `Directory.Build.props`) — release builds are made by CI when the release is published.
+- *Updates ▸*: "You have …", *Check for updates now…*, *Check automatically:* Every day (default) / Every week /
+  Every month / Never, "Last checked …". App-level settings at the top of `settings.json`: `updateCheck`
+  (`Daily|Weekly|Monthly|Never`), `lastUpdateCheckUtc`, `notifiedVersion`.
+- The check (`UpdateChecker`, Core) asks `GET https://api.github.com/repos/gray0072/webdav-sync/releases/latest`
+  (no token; drafts and prereleases are ignored) and compares the tag with the running version. Automatic: two
+  minutes after start, then hourly whether a check is due; a failed check (offline) is retried at the next tick.
+  A newer version is announced once (balloon, click → update window) and the menu shows a bold *Update to X…*.
+- Update window: new version with its release date, the running version with its date, release notes as plain
+  text; *Install and restart* / *Release page* / *Later*. Install: download `WebDavSync-<v>-win-x64.zip` and its
+  `.sha256`, compare, extract `WebDavSync.exe` to `WebDavSync.exe.new`, rename the running exe to
+  `WebDavSync.exe.old` (allowed while it runs), move the new one in place (rolled back if that fails), start it with
+  `--data-dir <dir> --wait-for-exit <pid>`, exit. The new process waits up to 5 min for the old one, deletes
+  `.old` / `.new` and continues normally (single-instance mutex).
+
 ## 14.2 Setup wizard
 
 Opens on the first start (no pairs) and from *Add a folder…*; cancelling the first-run wizard leaves *Set up sync…*

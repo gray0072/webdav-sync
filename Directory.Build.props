@@ -7,11 +7,15 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <Version>0.2.1</Version>
+    <Version>0.3.0</Version>
     <Product>WebDavSync</Product>
     <Authors>Sergey Ilyin</Authors>
     <Copyright>Copyright (c) 2026 Sergey Ilyin</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/gray0072/webdav-sync</RepositoryUrl>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Shown next to the version in the tray app; release builds run when the release is published. -->
+    <AssemblyMetadata Include="BuildDate" Value="$([System.DateTime]::UtcNow.ToString('yyyy-MM-dd'))" />
+  </ItemGroup>
 </Project>

@@ -166,6 +166,15 @@ public sealed class AppSettings
     /// <summary>Tray app: hard cap of its CPU use, percent of the whole machine; 0 = no cap (§11).</summary>
     public int CpuLimitPercent { get; set; }
 
+    /// <summary>Tray app: how often to look for a new release (§14.3).</summary>
+    public Updates.UpdateCheckInterval UpdateCheck { get; set; } = Updates.UpdateCheckInterval.Daily;
+
+    /// <summary>Tray app: when the last update check succeeded.</summary>
+    public DateTime? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>Tray app: the newest version already announced, so each release is announced once.</summary>
+    public string? NotifiedVersion { get; set; }
+
     public static AppSettings Load(string path)
     {
         if (!File.Exists(path))

@@ -7,6 +7,7 @@ using WebDavSync.Core.Execution;
 using WebDavSync.Core.Model;
 using WebDavSync.Core.Planning;
 using WebDavSync.Core.Remote;
+using WebDavSync.Core.Updates;
 
 namespace WebDavSync.UiGallery;
 
@@ -27,6 +28,22 @@ internal static partial class Program
         }
 
         var output = Directory.CreateDirectory(args[0]).FullName;
+        if (args.Contains("--test-swap"))
+        {
+            // Run from a disposable copy only: downloads the latest release, swaps it in for this exe and starts it.
+            using var http = new HttpClient();
+            var latest = new UpdateChecker(http).GetLatestAsync(CancellationToken.None).GetAwaiter().GetResult()!;
+            var exe = Updater.DownloadAsync(http, latest, new Progress<string>(_ => { }), CancellationToken.None).GetAwaiter().GetResult();
+            Updater.SwapAndRestart(exe, Path.Combine(output, "data"));
+            return 0;
+        }
+
+        if (args.Contains("--test-update"))
+        {
+            // Real check against GitHub and a real download + checksum + extraction (the swap itself is not done).
+            return TestUpdateAsync(output).GetAwaiter().GetResult();
+        }
+
         Application.SetHighDpiMode(args.Contains("--dpi-unaware") ? HighDpiMode.DpiUnaware : HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -52,6 +69,31 @@ internal static partial class Program
         return 0;
     }
 
+    private static async Task<int> TestUpdateAsync(string output)
+    {
+        using var http = new HttpClient();
+        var lines = new List<string> { $"running {WebDavSync.Core.Updates.UpdateChecker.CurrentDescription}" };
+        try
+        {
+            var latest = await new WebDavSync.Core.Updates.UpdateChecker(http).GetLatestAsync(CancellationToken.None);
+            lines.Add($"latest {latest?.Version} published {latest?.PublishedUtc:u} zip {latest?.ZipUrl}");
+            var exe = await Updater.DownloadAsync(http, latest!, new Progress<string>(m => lines.Add("  " + m)), CancellationToken.None);
+            var info = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe);
+            lines.Add($"extracted {exe}: {new FileInfo(exe).Length} bytes, product version {info.ProductVersion}");
+            File.Delete(exe);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            lines.Add("FAILED: " + ex);
+            return 1;
+        }
+        finally
+        {
+            File.WriteAllLines(Path.Combine(output, "update.txt"), lines);
+        }
+    }
+
     private static async Task CaptureAllAsync(string output)
     {
         var temp = Directory.CreateTempSubdirectory("wds-gallery-");
@@ -72,6 +114,10 @@ internal static partial class Program
         await CaptureAsync(output, "folders", () => new FoldersForm(pair, remote));
         await CaptureAsync(output, "cloud-folder", () => new RemoteFolderDialog(remote));
         await CaptureAsync(output, "password", () => new PasswordForm("App password for you@mail.ru at https://webdav.cloud.mail.ru/"));
+        var notes = string.Join('\n', Enumerable.Range(1, 12).Select(i => $"- Change number {i}: something useful was improved in this release."));
+        await CaptureAsync(output, "update", () => new UpdateForm(
+            new ReleaseInfo(new Version(9, 9, 9), "v9.9.9", DateTime.UtcNow, "https://example.org", "**What's new**\n\n" + notes, "https://example.org/a.zip", "https://example.org/a.zip.sha256"),
+            new HttpClient()));
         for (var page = 0; page < 3; page++)
         {
             var index = page;

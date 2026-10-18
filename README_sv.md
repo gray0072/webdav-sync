@@ -146,9 +146,13 @@ Regler (`wds rule add cloud --type Download --folder "Camera Uploads"`) godkänn
 | Röd markering | Fel (t.ex. fel lösenord) |
 | Grått moln | Offline eller pausad |
 
-Meny: *Open folder* · *Open cloud in browser* · *Sync now* · *Pause* (15 min, 1 h, till i morgon, tills vidare) ·
+Menyn börjar med versionen och dess utgivningsdatum. Meny: *Open folder* · *Open cloud in browser* · *Sync now* · *Pause* (15 min, 1 h, till i morgon, tills vidare) ·
 *Approvals* · *Choose folders* · *Settings* (läge, intervall för molnkontroll, lokal kontroll, hashningshastighet,
-lösenord) · *Performance* (låg prioritet, CPU-tak) · *Start with Windows* · *Open log folder* · *About*.
+lösenord) · *Performance* (låg prioritet, CPU-tak) · *Start with Windows* · *Updates* (sök nu; sök automatiskt varje dag,
+vecka, månad eller aldrig — dagligen som standard) · *Open log folder* · *WebDavSync on GitHub*.
+
+Nya versioner hittas automatiskt: *Update to X…* i menyn visar vad som är nytt och installerar med ett klick
+(nedladdningen kontrolleras mot sin SHA-256-kontrollsumma; inställningar och synkläge behålls).
 
 ## Kommandoraden (avancerat)
 
