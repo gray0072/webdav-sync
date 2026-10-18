@@ -25,6 +25,13 @@ else; framework-dependent (.NET 10 Desktop Runtime), win-x64.
 
 Single instance: a named mutex per data folder (no lock file).
 
+- Previous copy (tray app): a copy whose data folder is `data` next to its exe records it in
+  `HKCU\Software\WebDavSync\DataDir` on every start. A copy that starts with no `settings.json` there (a new release
+  unpacked into another folder) first copies `settings.json` from that recorded folder, else from the data folder of
+  the autostart entry (`HKCU\...\Run\WebDavSync`: its `--data-dir`, or `data` next to its exe); then it re-points an
+  existing autostart entry to itself and says so in a balloon. Passwords (by pair id) and pair state (in the synced
+  folder) need nothing. An explicit `--data-dir` elsewhere (tests, scripts) neither records nor adopts.
+
 - The app dir must be writable (portable install, not `Program Files`). If it is not
   writable → clear error at startup and exit; no silent fallback to `%APPDATA%`.
 - Passwords are not in the app folder: Windows Credential Manager, generic credential `WebDavSync/<pair id>`

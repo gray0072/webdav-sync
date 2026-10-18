@@ -103,7 +103,9 @@ updated only after the result is verified on the target side.
 2. Unpack it into a **writable** folder, e.g. `D:\Apps\WebDavSync` (not `Program Files`).
 3. Run `WebDavSync.exe`.
 
-The folder is portable: settings and logs go to a `data\` folder next to the program.
+The folder is portable: settings and logs go to a `data\` folder next to the program. A new version unpacked into
+another folder takes over the settings of the copy that ran last on its first start (and moves *Start with Windows*
+to itself); passwords and sync state are not in the app folder, so nothing has to be set up again.
 
 ## Getting started
 

@@ -207,6 +207,10 @@ public sealed class SyncEngine : IDisposable
         var baseEntries = Store.LoadBase();
         var filter = Filter;
 
+        // Progress estimates: the last cycle's base; the root folder is not a base entry.
+        var expectedFolders = baseEntries.Count == 0 ? 0 : baseEntries.Values.Count(b => b.IsDir) + 1;
+        var expectedItems = baseEntries.Count;
+
         RemoteSnapshot remote;
         var remoteFromCache = false;
         if (rootItem is null)
@@ -236,7 +240,7 @@ public sealed class SyncEngine : IDisposable
             {
                 status?.Report("Crawling remote...");
                 remote = await scanner
-                    .CrawlAsync(remoteRoot, string.Empty, new InlineProgress<int>(n => status?.Report($"Crawling remote: {n} folders")), ct)
+                    .CrawlAsync(remoteRoot, string.Empty, new InlineProgress<int>(n => status?.Report($"Crawling remote: {Progress(n, expectedFolders, "folders")}")), ct)
                     .ConfigureAwait(false);
                 if (remote.IsComplete)
                 {
@@ -257,7 +261,8 @@ public sealed class SyncEngine : IDisposable
             baseEntries,
             LocalHashMode.Needed,
             key => remote.Entries.TryGetValue(key, out var r) && !r.IsDir,
-            new InlineProgress<ScanProgress>(p => status?.Report($"Scanning local: {p.Files} files, {p.Folders} folders, hashed {SafetyGuards.Size(p.HashedBytes)}")),
+            new InlineProgress<ScanProgress>(p => status?.Report(
+                $"Scanning local: {(expectedItems > 0 ? Progress(p.Files + p.Folders, expectedItems, "") : $"{p.Files} files, {p.Folders} folders")}, hashed {SafetyGuards.Size(p.HashedBytes)}")),
             ct).ConfigureAwait(false);
 
         if (verify.Count > 0 && local.IsComplete)
@@ -507,6 +512,13 @@ public sealed class SyncEngine : IDisposable
         Store.SetMeta(MetaKeys.RemoteMarkerCreated, "1");
         _logger.LogInformation("Created remote marker {Marker}", StatePaths.RemoteMarkerFile(root));
     }
+
+    /// <summary>
+    /// Percent of <paramref name="expected"/> (the base, so only an estimate: capped at 99 % until the scan ends);
+    /// the plain count with <paramref name="unit"/> when there is no estimate (first cycle).
+    /// </summary>
+    private static string Progress(int done, int expected, string unit) =>
+        expected > 0 ? $"{Math.Min(99, (long)done * 100 / expected)}%" : $"{done} {unit}";
 
     public void Dispose()
     {

@@ -103,7 +103,9 @@ basen uppdateras först när resultatet är verifierat på målsidan.
 2. Packa upp den i en **skrivbar** mapp, t.ex. `D:\Apps\WebDavSync` (inte `Program Files`).
 3. Starta `WebDavSync.exe`.
 
-Mappen är portabel: inställningar och loggar sparas i en `data\`-mapp bredvid programmet.
+Mappen är portabel: inställningar och loggar sparas i en `data\`-mapp bredvid programmet. En ny version som packas upp
+i en annan mapp tar vid första starten över inställningarna från den kopia som kördes senast (och flyttar *Start with
+Windows* till sig själv); lösenord och synkläge ligger inte i programmappen, så inget behöver ställas in igen.
 
 ## Kom igång
 

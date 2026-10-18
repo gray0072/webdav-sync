@@ -27,7 +27,8 @@ internal sealed class TrayContext : ApplicationContext
     private PairState _top;
     private bool _exiting;
 
-    public TrayContext(AppHost host)
+    /// <param name="adoptedFrom">Data folder of an earlier copy whose settings this one took over at start, if any.</param>
+    public TrayContext(AppHost host, string? adoptedFrom = null)
     {
         _host = host;
         _ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
@@ -59,6 +60,17 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         Refresh();
+        if (adoptedFrom is not null)
+        {
+            // A new copy in another folder: autostart has to start this one from now on.
+            if (StartupCommand() is not null)
+            {
+                SetStartup(true);
+            }
+
+            _tray.ShowBalloonTip(10_000, "WebDavSync", $"Settings taken over from the previous copy ('{adoptedFrom}').", ToolTipIcon.Info);
+        }
+
         if (host.Pairs.Count == 0)
         {
             // First run: the setup wizard instead of an empty tray icon.
@@ -546,6 +558,25 @@ internal sealed class TrayContext : ApplicationContext
     {
         using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RunKey);
         return key?.GetValue("WebDavSync") as string;
+    }
+
+    /// <summary>Data folder of the autostart entry (§15.1): its <c>--data-dir</c>, else <c>data</c> next to its exe.</summary>
+    public static string? StartupDataDir()
+    {
+        var command = StartupCommand();
+        if (command is null)
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(command, "--data-dir \"([^\"]+)\"");
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        var exe = System.Text.RegularExpressions.Regex.Match(command, "^\"([^\"]+)\"");
+        return exe.Success ? Path.Combine(Path.GetDirectoryName(exe.Groups[1].Value) ?? string.Empty, "data") : null;
     }
 
     /// <summary>Per-user autostart (HKCU Run) with this instance's data folder.</summary>

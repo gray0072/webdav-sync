@@ -46,8 +46,12 @@ internal static class Program
             return 0;
         }
 
+        // A new release unpacked into another folder: keep the settings of the copy that ran last (§15.1).
+        var adoptedFrom = PreviousInstall.Adopt(paths);
+        PreviousInstall.Record(paths);
+
         using var host = new AppHost(paths);
-        Application.Run(new TrayContext(host));
+        Application.Run(new TrayContext(host, adoptedFrom));
         return 0;
     }
 
