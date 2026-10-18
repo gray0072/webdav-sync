@@ -347,7 +347,7 @@ internal sealed class TrayContext : ApplicationContext
         }
 
         var performance = new ToolStripMenuItem("Performance");
-        performance.DropDownItems.Add(new ToolStripMenuItem("Low priority (background mode)", null, (_, _) => SetLimits(!_host.LowPriority, _host.CpuLimitPercent))
+        performance.DropDownItems.Add(new ToolStripMenuItem("Low priority", null, (_, _) => SetLimits(!_host.LowPriority, _host.CpuLimitPercent))
         {
             Checked = _host.LowPriority,
         });

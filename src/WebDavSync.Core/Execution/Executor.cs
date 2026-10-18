@@ -306,7 +306,7 @@ public sealed class Executor(ExecutorContext ctx)
                 hasher.Reset();
             }
 
-            await using var file = new FileStream(temp, download.Offset > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous);
+            await using var file = LocalFs.ForBulkIo(new FileStream(temp, download.Offset > 0 ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous));
             var buffer = new byte[81920];
             using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
             while (true)

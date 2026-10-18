@@ -72,14 +72,14 @@ public readonly record struct ContentHash
 
     /// <summary>Opens a file for reading while allowing other writers (§6.6).</summary>
     public static FileStream OpenShared(string path) =>
-        new(path, new FileStreamOptions
+        Local.LocalFs.ForBulkIo(new FileStream(path, new FileStreamOptions
         {
             Mode = FileMode.Open,
             Access = FileAccess.Read,
             Share = FileShare.ReadWrite | FileShare.Delete,
             Options = FileOptions.SequentialScan | FileOptions.Asynchronous,
             BufferSize = 0,
-        });
+        }));
 
     public override string ToString() => _hex ?? string.Empty;
 }

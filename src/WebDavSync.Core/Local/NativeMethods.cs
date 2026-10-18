@@ -13,6 +13,9 @@ internal static partial class NativeMethods
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
 
+    private const int FileIoPriorityHintInfo = 12;
+    private const int IoPriorityHintVeryLow = 0;
+
     private const uint FoDelete = 0x0003;
     private const ushort FofSilent = 0x0004;
     private const ushort FofNoConfirmation = 0x0010;
@@ -34,6 +37,13 @@ internal static partial class NativeMethods
         }
 
         return new FileIdentity(((ulong)info.FileIndexHigh << 32) | info.FileIndexLow, info.VolumeSerialNumber, info.NumberOfLinks);
+    }
+
+    /// <summary>Very low I/O priority for one open file (<c>FileIoPriorityHintInfo</c>); best effort.</summary>
+    public static void SetLowIoPriority(SafeFileHandle handle)
+    {
+        var hint = IoPriorityHintVeryLow;
+        _ = SetFileInformationByHandle(handle, FileIoPriorityHintInfo, ref hint, sizeof(int));
     }
 
     /// <summary>Sends a file or folder to the Recycle Bin. Returns false when the shell refused.</summary>
@@ -60,6 +70,10 @@ internal static partial class NativeMethods
             : fullPath.StartsWith(@"\\", StringComparison.Ordinal)
                 ? @"\\?\UNC\" + fullPath[2..]
                 : @"\\?\" + fullPath;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetFileInformationByHandle(SafeFileHandle handle, int infoClass, ref int info, uint size);
 
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     private static partial SafeFileHandle CreateFileW(

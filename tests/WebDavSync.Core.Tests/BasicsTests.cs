@@ -52,6 +52,23 @@ public sealed class ContentHashTests
         Assert.False(ContentHash.TryParse("xyz", out _));
         Assert.Null(ContentHash.ParseOrNull(new string('G', 40)));
     }
+
+    [Fact]
+    public async Task File_hash_is_the_same_with_low_io_priority()
+    {
+        using var temp = new Support.TempDir();
+        var content = new string('x', 100_000);
+        var path = temp.File("big.bin", content);
+        Local.LocalFs.LowIoPriority = true;
+        try
+        {
+            Assert.Equal(ContentHash.Compute(Encoding.UTF8.GetBytes(content)), await ContentHash.ComputeFileAsync(path, CancellationToken.None));
+        }
+        finally
+        {
+            Local.LocalFs.LowIoPriority = false;
+        }
+    }
 }
 
 public sealed class PathKeyTests

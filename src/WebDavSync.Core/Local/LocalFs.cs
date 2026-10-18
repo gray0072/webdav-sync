@@ -9,6 +9,23 @@ public static class LocalFs
     private const FileAttributes RecallOnOpen = (FileAttributes)0x40000;
     private const FileAttributes RecallOnDataAccess = (FileAttributes)0x400000;
 
+    /// <summary>
+    /// Bulk file I/O (hashing, upload reads, download writes) at very low disk priority, so it yields to other programs
+    /// (§11, the tray app's <c>lowPriority</c>). Per file handle, so the rest of the process keeps normal priority.
+    /// </summary>
+    public static bool LowIoPriority { get; set; }
+
+    /// <summary>Applies <see cref="LowIoPriority"/> to a file opened for bulk I/O.</summary>
+    public static FileStream ForBulkIo(FileStream stream)
+    {
+        if (LowIoPriority && OperatingSystem.IsWindows())
+        {
+            NativeMethods.SetLowIoPriority(stream.SafeFileHandle);
+        }
+
+        return stream;
+    }
+
     public static ulong? GetFileId(string fullPath) =>
         OperatingSystem.IsWindows() ? NativeMethods.GetFileIdentity(fullPath)?.FileId : null;
 

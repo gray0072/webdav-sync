@@ -35,7 +35,7 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
 - CI: `.github/workflows/ci.yml` (build + unit tests on Windows). A release is made by pushing a tag `vX.Y.Z`:
   `.github/workflows/release.yml` tests, runs `scripts/publish.ps1 -AppOnly` (the CLI is not shipped), zips with LICENSE and READMEs, and creates the
   GitHub release with notes from `docs/releases/vX.Y.Z.md`.
-- Release notes are in English only: no "Коротко по-русски" or other translated summaries.
+- Release notes are in English only.
 
 ## Storage
 
