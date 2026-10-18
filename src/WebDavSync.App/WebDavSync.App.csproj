@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="WebDavSync.UiGallery" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\WebDavSync.Core\WebDavSync.Core.csproj" />
   </ItemGroup>
 

@@ -21,6 +21,9 @@ the user, §19.9); the ordered next steps are in [§19.10](spec/19-prototype-rea
 - `src/WebDavSync.App/` — WinForms tray app `WebDavSync.exe` (`net10.0-windows`, §14.1) on top of `PairService` (Core).
 - `src/WebDavSync.Cli/` — headless tool `wds`: `probe`, `pair add|list|show|set`, `import`, `scan`, `plan`, `sync --once`, `held`, `rule`,
   `secret`, `folders`, `status`.
+- `tools/WebDavSync.UiGallery/` — dev tool, not shipped: opens every window of the app with sample data, saves a PNG
+  each and `layout.txt` (controls that overflow their parent, list column widths). Run it after UI changes:
+  `WebDavSync.UiGallery.exe <dir>` (current scaling), `--dpi-unaware` (100 %), `--font-scale 1.5` (larger text).
 - `tests/WebDavSync.Core.Tests/` — unit tests (planner decision table, moves, folders, guards, hash, names, importer,
   executor scenarios on temp folders + in-memory remote). `tests/WebDavSync.IntegrationTests/` — against
   `rclone serve webdav` in Docker (skipped without Docker).

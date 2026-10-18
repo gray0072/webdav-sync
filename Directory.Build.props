@@ -7,7 +7,7 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <Product>WebDavSync</Product>
     <Authors>Sergey Ilyin</Authors>
     <Copyright>Copyright (c) 2026 Sergey Ilyin</Copyright>

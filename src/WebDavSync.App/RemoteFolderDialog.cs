@@ -9,26 +9,23 @@ internal sealed class RemoteFolderDialog : ScaledForm
     private const string Placeholder = "…";
 
     private readonly IRemoteStore _remote;
-    private readonly TreeView _tree = new() { Dock = DockStyle.Fill, HideSelection = false };
-    private readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 24, TextAlign = ContentAlignment.MiddleLeft };
+    private readonly TreeView _tree = new() { HideSelection = false, Margin = new Padding(8, 8, 8, 0) };
+    private readonly Label _status = WrapLabel(margin: new Padding(3));
 
     public RemoteFolderDialog(IRemoteStore remote)
     {
         _remote = remote;
         Text = "Choose a cloud folder";
         Size = new Size(460, 520);
+        MinimumSize = new Size(360, 320);
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = MaximizeBox = false;
 
-        var ok = new Button { Text = "Choose", AutoSize = true, DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
+        var ok = new Button { Text = "Choose", DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
         AcceptButton = ok;
         CancelButton = cancel;
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(6) };
-        buttons.Controls.AddRange([cancel, ok]);
-        Controls.Add(_tree);
-        Controls.Add(_status);
-        Controls.Add(buttons);
+        Controls.Add(Rows(_tree, _tree, ButtonBar(_status, ok, cancel)));
 
         var root = new TreeNode("Whole cloud (/)") { Tag = "/" };
         root.Nodes.Add(Placeholder);

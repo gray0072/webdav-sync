@@ -4,6 +4,9 @@
     <Project Path="src/WebDavSync.Cli/WebDavSync.Cli.csproj" />
     <Project Path="src/WebDavSync.App/WebDavSync.App.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/WebDavSync.UiGallery/WebDavSync.UiGallery.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WebDavSync.Core.Tests/WebDavSync.Core.Tests.csproj" />
     <Project Path="tests/WebDavSync.IntegrationTests/WebDavSync.IntegrationTests.csproj" />

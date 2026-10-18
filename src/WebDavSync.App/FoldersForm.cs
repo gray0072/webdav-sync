@@ -9,9 +9,9 @@ internal sealed class FoldersForm : ScaledForm
 {
     private readonly PairSettings _pair;
     private readonly IRemoteStore _remote;
-    private readonly CheckedListBox _list = new() { Dock = DockStyle.Fill, CheckOnClick = true, IntegralHeight = false };
-    private readonly Label _info = new() { Dock = DockStyle.Top, AutoSize = false, Height = 52, Padding = new Padding(8, 6, 8, 0) };
-    private readonly Button _ok = new() { Text = "Save", AutoSize = true, Enabled = false };
+    private readonly CheckedListBox _list = new() { CheckOnClick = true, IntegralHeight = false, Margin = new Padding(8, 0, 8, 0) };
+    private readonly Label _info = WrapLabel();
+    private readonly Button _ok = new() { Text = "Save", Enabled = false };
     private IReadOnlyList<TopFolder> _folders = [];
 
     public FoldersForm(PairSettings pair, IRemoteStore remote)
@@ -20,16 +20,13 @@ internal sealed class FoldersForm : ScaledForm
         _remote = remote;
         Text = $"Choose folders — {pair.Name}";
         Size = new Size(560, 560);
+        MinimumSize = new Size(420, 360);
         StartPosition = FormStartPosition.CenterScreen;
         _info.Text = "Loading…";
 
-        var cancel = new Button { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(8) };
-        buttons.Controls.AddRange([cancel, _ok]);
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel };
         CancelButton = cancel;
-        Controls.Add(_list);
-        Controls.Add(_info);
-        Controls.Add(buttons);
+        Controls.Add(Rows(_list, _info, _list, ButtonBar(null, _ok, cancel)));
 
         _ok.Click += (_, _) => Save();
         Shown += async (_, _) => await LoadAsync();

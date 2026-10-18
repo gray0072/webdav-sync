@@ -385,7 +385,7 @@ internal sealed class TrayContext : ApplicationContext
 
         if (!_approvals.TryGetValue(pair, out var form) || form.IsDisposed)
         {
-            form = new ApprovalsForm(pair.Pair, service);
+            form = new ApprovalsForm(pair.Pair, new ServiceApprovals(service));
             form.FormClosed += (_, _) => _approvals.Remove(pair);
             _approvals[pair] = form;
         }

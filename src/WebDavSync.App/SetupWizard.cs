@@ -19,7 +19,7 @@ internal sealed class SetupWizard : ScaledForm
     private readonly AppHost _host;
     private readonly Label _title = new() { AutoSize = true, Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 13f, FontStyle.Bold) };
     private readonly Label _subtitle = new() { AutoSize = true, MaximumSize = new Size(560, 0), ForeColor = SystemColors.GrayText };
-    private readonly Panel _content = new() { Dock = DockStyle.Fill, Padding = new Padding(20, 8, 20, 8) };
+    private readonly Panel _content = new() { Padding = new Padding(20, 8, 20, 8), Margin = Padding.Empty };
     private readonly Button _back = new() { Text = "< Back", AutoSize = true };
     private readonly Button _next = new() { Text = "Next >", AutoSize = true };
     private readonly Button _cancel = new() { Text = "Cancel", AutoSize = true, DialogResult = DialogResult.Cancel };
@@ -63,20 +63,26 @@ internal sealed class SetupWizard : ScaledForm
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(620, 470);
 
-        var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 78, FlowDirection = FlowDirection.TopDown, Padding = new Padding(20, 14, 20, 0), BackColor = SystemColors.Window };
-        header.Controls.AddRange([_title, _subtitle]);
-        var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(12) };
-        footer.Controls.AddRange([_cancel, _next, _back]);
-        Controls.Add(_content);
-        Controls.Add(new Label { Dock = DockStyle.Top, Height = 1, BorderStyle = BorderStyle.FixedSingle });
-        Controls.Add(header);
-        Controls.Add(footer);
+        // Header and footer size to their text; all pages are in the form from the start (hidden), so the DPI
+        // auto-scaling on load reaches them too.
+        _title.Margin = new Padding(20, 14, 20, 2);
+        _subtitle.Margin = new Padding(20, 0, 20, 12);
+        var header = Rows(null, _title, _subtitle);
+        header.AutoSize = true;
+        header.BackColor = SystemColors.Window;
+        var line = new Label { Height = 1, BorderStyle = BorderStyle.FixedSingle, Margin = Padding.Empty };
+        Controls.Add(Rows(_content, header, line, _content, ButtonBar(null, _back, _next, _cancel)));
         CancelButton = _cancel;
         AcceptButton = _next;
 
         _pages.Add(("Connect your cloud", "Where should your files be synced to?", AccountPage()));
         _pages.Add(("Choose the folders", "Which folder on this computer, and which folder in the cloud?", FoldersPage()));
         _pages.Add(("How careful should it be?", "You can change this any time in the tray menu: Settings ▸ Mode.", ModePage()));
+        foreach (var (_, _, page) in _pages)
+        {
+            page.Visible = false;
+            _content.Controls.Add(page);
+        }
 
         _back.Click += (_, _) => Show(_page - 1);
         _next.Click += async (_, _) => await NextAsync();
@@ -162,11 +168,40 @@ internal sealed class SetupWizard : ScaledForm
 
     // ---------------------------------------------------------------- navigation
 
+    /// <summary>Grows the window to the tallest page (larger text, other languages), within the screen.</summary>
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        var width = _content.ClientSize.Width - _content.Padding.Horizontal;
+        var tallest = _pages.Max(p => p.Page.GetPreferredSize(new Size(width, 0)).Height) + _content.Padding.Vertical;
+        var missing = tallest - _content.ClientSize.Height;
+        if (missing > 0)
+        {
+            var screen = Screen.FromControl(this).WorkingArea;
+            Height = Math.Min(Height + missing, screen.Height);
+            Top = Math.Max(screen.Top, Top - (missing / 2));
+        }
+    }
+
+    /// <summary>Shows a page without checks (UI gallery).</summary>
+    internal void PreviewPage(int index, string? localFolder = null)
+    {
+        if (localFolder is not null)
+        {
+            _local.Text = localFolder;
+        }
+
+        Show(index);
+    }
+
     private void Show(int index)
     {
         _page = index;
-        _content.Controls.Clear();
-        _content.Controls.Add(_pages[index].Page);
+        for (var i = 0; i < _pages.Count; i++)
+        {
+            _pages[i].Page.Visible = i == index;
+        }
+
         _title.Text = _pages[index].Title;
         _subtitle.Text = _pages[index].Subtitle;
         _back.Visible = index > 0;

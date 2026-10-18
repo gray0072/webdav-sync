@@ -33,7 +33,9 @@ Rate-limited (one per category per 10 min), never a toast per file.
 
 - `WebDavSync.exe [--data-dir <path>]` (default `<app dir>\data` or `WDS_DATA_DIR`); exits with an error if the data
   folder is not writable; one instance per Windows user, wherever it runs from (named mutex `Local\WebDavSync`; a
-  second start shows "already running" and exits). Forms are DPI-scaled (sizes given at 96 DPI). One `PairService` (§8) per pair of
+  second start shows "already running" and exits). Forms are DPI-scaled (sizes given at 96 DPI): every control is in the form when it loads (hidden wizard
+  pages too), bars and texts size to their content (no fixed heights), list columns fit their text; checked with
+  `tools/WebDavSync.UiGallery` at 100 %, 150 % and 1.5× text. One `PairService` (§8) per pair of
   `settings.json`; the password comes from the Credential Manager, then `WDS_PASSWORD`.
 - Icon: all states of the table, drawn at startup; syncing pulses smoothly (24 frames, cosine between two blues,
   ~2 s per pulse); a background check is quiet (Checking looks like Idle), so the periodic crawl does not animate; the most severe pair state wins
